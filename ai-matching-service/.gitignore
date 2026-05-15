@@ -1,0 +1,72 @@
+# ============================================================================
+# AI Matching Service - .gitignore
+# ============================================================================
+
+# ─── Python ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# ─── Environment ─────────────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+.env.development
+
+# ─── IDE & Editor ────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ─── OS Specific ─────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+ehthumbs.db
+Thumbs.db
+
+# ─── Logs ────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Temporary ───────────────────────────────────────────────────────────
+.tmp/
+temp/
+*.bak
+
+# ─── Virtual Environments ────────────────────────────────────────────────
+/.venv

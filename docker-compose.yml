@@ -1,0 +1,99 @@
+version: '3.8'
+
+# Load environment variables from .env file
+# Create .env file from .env.example and update with your actual values
+env_file:
+  - .env
+
+services:
+  gateway:
+    build: ./backend-gateway
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - AI_SERVICE_URL=${AI_SERVICE_URL}
+      - NODE_ENV=${NODE_ENV}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+      - BLOCKCHAIN_SERVICE_URL=${BLOCKCHAIN_SERVICE_URL}
+      - CORS_ORIGIN=${CORS_ORIGIN}
+      - LOG_LEVEL=${LOG_LEVEL}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - apka-hunar-network
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: apka-hunar-db
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - apka-hunar-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    restart: unless-stopped
+
+  ai-service:
+    build: ./ai-matching-service
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_HOST=${DATABASE_HOST}
+      - DATABASE_PORT=${DATABASE_PORT}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_NAME=${DATABASE_NAME}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - apka-hunar-network
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: apka-hunar-pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    networks:
+      - apka-hunar-network
+  blockchain-service:
+    build: ./blockchain-service
+    ports:
+      - "3001:3001"
+    networks:
+      - apka-hunar-network
+    restart: unless-stopped
+
+networks:
+  apka-hunar-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

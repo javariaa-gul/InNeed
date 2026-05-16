@@ -48,7 +48,8 @@ async function bootstrap() {
   await app.listen(configService.port, '0.0.0.0');
   console.log(`\n✅ Apka Hunar Gateway running on port ${configService.port}`);
   console.log(`📡 Environment: ${configService.environment.toUpperCase()}`);
-  console.log(`🔒 CORS Origins: ${configService.cors.origin.join(', ')}\n`);
+  const corsOrigins = configService.isDevelopment ? 'All localhost ports (development mode)' : configService.corsOrigins.join(', ');
+  console.log(`🔒 CORS Origins: ${corsOrigins}\n`);
 }
 
 bootstrap().catch((error) => {

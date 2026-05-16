@@ -70,7 +70,17 @@ export class UsersService {
   }
 
   async markTutorialSeen(id: number): Promise<void> {
-    await this.repo.update(id, { tutorialSeen: true });
+    // Verify user exists first before marking
+    const user = await this.repo.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    
+    // Mark tutorial as seen (idempotent operation)
+    const result = await this.repo.update(id, { tutorialSeen: true });
+    
+    // Verify the update was successful
+    if (result.affected === 0) {
+      throw new Error('Failed to update user tutorial status');
+    }
   }
 
   async findAll(): Promise<User[]> { return this.repo.find(); }

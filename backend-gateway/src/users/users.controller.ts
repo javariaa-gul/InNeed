@@ -97,10 +97,14 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Post('tutorial-seen')
-  @ApiOperation({ summary: 'Mark tutorial as seen' })
+  @ApiOperation({ summary: 'Mark tutorial as seen by the authenticated user' })
   async markTutorialSeen(@Request() req: any) {
-    await this.usersService.markTutorialSeen(req.user.userId);
-    return { success: true };
+    try {
+      await this.usersService.markTutorialSeen(req.user.userId);
+      return { success: true, message: 'Tutorial marked as seen' };
+    } catch (error) {
+      throw error;
+    }
   }
 
   @UseGuards(JwtAuthGuard)

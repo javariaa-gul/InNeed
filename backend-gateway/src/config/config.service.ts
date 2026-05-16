@@ -31,13 +31,42 @@ export class ConfigService {
   }
 
   // ─── CORS ─────────────────────────────────────────────────────────────────
-  get cors() {
-    const origins = process.env.CORS_ORIGIN
+  get corsOrigins(): string[] {
+    const configuredOrigins = process.env.CORS_ORIGIN
       ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim())
-      : ['http://localhost:3000', 'http://localhost:8080'];
+      : ['http://localhost:3000'];
+    return configuredOrigins;
+  }
 
+  get cors() {
+    // In development, allow all localhost ports (for Flutter web with random ports)
+    // In production, use specific CORS_ORIGIN from environment
+    if (this.isDevelopment) {
+      return {
+        origin: (origin: string, callback: (err: Error | null, allow?: boolean) => void) => {
+          // Allow requests with no origin (like mobile apps, Postman, curl)
+          if (!origin) return callback(null, true);
+          
+          // Allow localhost on any port
+          if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+            return callback(null, true);
+          }
+          
+          if (this.corsOrigins.includes(origin)) {
+            return callback(null, true);
+          }
+          
+          return callback(new Error('Not allowed by CORS'));
+        },
+        methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+        credentials: true,
+        optionsSuccessStatus: 200,
+      };
+    }
+    
+    // Production: strict CORS policy
     return {
-      origin: origins,
+      origin: this.corsOrigins,
       methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
       credentials: true,
       optionsSuccessStatus: 200,

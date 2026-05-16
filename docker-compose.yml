@@ -1,13 +1,10 @@
 version: '3.8'
 
-# Load environment variables from .env file
-# Create .env file from .env.example and update with your actual values
-env_file:
-  - .env
-
 services:
   gateway:
     build: ./backend-gateway
+    env_file:
+      - .env
     ports:
       - "${PORT:-3000}:3000"
     environment:
@@ -36,6 +33,8 @@ services:
   db:
     image: postgres:15-alpine
     container_name: apka-hunar-db
+    env_file:
+      - .env
     environment:
       POSTGRES_USER: ${DATABASE_USER}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
@@ -55,6 +54,8 @@ services:
 
   ai-service:
     build: ./ai-matching-service
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     environment:
@@ -74,6 +75,8 @@ services:
     image: dpage/pgadmin4:latest
     container_name: apka-hunar-pgadmin
     restart: always
+    env_file:
+      - .env
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
@@ -85,6 +88,8 @@ services:
       - apka-hunar-network
   blockchain-service:
     build: ./blockchain-service
+    env_file:
+      - .env
     ports:
       - "3001:3001"
     networks:

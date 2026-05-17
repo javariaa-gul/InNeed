@@ -7,31 +7,45 @@ import { memoryStorage } from 'multer';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { ReviewsService, CreateReviewDto } from './reviews.service.js';
+import { CloudinaryService } from '../cloudinary/cloudinary.service.js';
 
 @ApiTags('reviews')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('reviews')
 export class ReviewsController {
-  constructor(private readonly svc: ReviewsService) {}
+  constructor(
+    private readonly svc: ReviewsService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
 
   @Post()
   @UseInterceptors(
-    FilesInterceptor('images', 5, { storage: memoryStorage() }),
+    FilesInterceptor('images', 2, { storage: memoryStorage() }),
   )
   async submit(
     @Request() req: any,
     @Body() dto: CreateReviewDto,
     @UploadedFiles() files: Express.Multer.File[],
   ) {
-    // Handle file uploads to get URLs
-    const imageUrls: string[] = [];
+    // Upload images to Cloudinary if provided
+    let beforeImageUrl: string | undefined;
+    let afterImageUrl: string | undefined;
+
     if (files && files.length > 0) {
+      // Map files by field name or by order
       for (const file of files) {
-        imageUrls.push(file.originalname);
+        const url = await this.cloudinaryService.uploadImage(file);
+        // First file = before, second file = after
+        if (!beforeImageUrl) {
+          beforeImageUrl = url;
+        } else if (!afterImageUrl) {
+          afterImageUrl = url;
+        }
       }
     }
-    return this.svc.submitReview(req.user.userId, dto, imageUrls);
+
+    return this.svc.submitReview(req.user.userId, dto, beforeImageUrl, afterImageUrl);
   }
 
   @Get('check/:jobId')

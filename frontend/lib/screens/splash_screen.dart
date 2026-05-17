@@ -41,6 +41,14 @@ class _SplashScreenState extends State<SplashScreen>
       duration: const Duration(seconds: 4), // Speed of planes crossing screen
     );
 
+    // Ensure navigation triggers even if plane animation finishes
+    // before the rest of the sequence completes (race condition).
+    _planeController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _navigate();
+      }
+    });
+
     _runAnimationSequence();
   }
 
@@ -58,11 +66,7 @@ class _SplashScreenState extends State<SplashScreen>
     await _dotController.forward();
 
     // Wait for planes to fully leave the screen before navigating
-    _planeController.addStatusListener((status) {
-      if (status == AnimationStatus.completed) {
-        _navigate();
-      }
-    });
+    // Navigation is handled by the listener attached in initState.
   }
 
   Future<void> _navigate() async {

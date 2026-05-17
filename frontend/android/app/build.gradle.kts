@@ -17,7 +17,7 @@ android {
 
     defaultConfig {
         applicationId = "com.apkahunar.app"
-        minSdk = 21
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

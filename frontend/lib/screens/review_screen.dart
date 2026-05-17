@@ -1,4 +1,6 @@
+import 'dart:io' as io;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 import '../utils/app_theme.dart';
 
@@ -26,10 +28,34 @@ class _ReviewScreenState extends State<ReviewScreen> {
   int _behavior = 0;
   int _smoothness = 0;
 
+  final List<XFile> _selectedImages = [];
+  final _imagePicker = ImagePicker();
+
   @override
   void dispose() {
     _commentCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImages() async {
+    try {
+      final images = await _imagePicker.pickMultiImage(
+        maxHeight: 1024,
+        maxWidth: 1024,
+        imageQuality: 85,
+      );
+      if (images.isNotEmpty) {
+        setState(() {
+          _selectedImages.addAll(images.take(5 - _selectedImages.length));
+        });
+      }
+    } catch (e) {
+      if (mounted) showSnack(context, 'Failed to pick images: $e', err: true);
+    }
+  }
+
+  void _removeImage(int index) {
+    setState(() => _selectedImages.removeAt(index));
   }
 
   Future<void> _submit() async {
@@ -39,15 +65,28 @@ class _ReviewScreenState extends State<ReviewScreen> {
     }
     setState(() => _loading = true);
     try {
-      await _api.submitReview({
-        'jobId': widget.jobId,
-        'overallRating': _overall,
-        if (_quality > 0) 'workQualityRating': _quality,
-        if (_behavior > 0) 'behaviorRating': _behavior,
-        if (_smoothness > 0) 'smoothnessRating': _smoothness,
-        if (_commentCtrl.text.trim().isNotEmpty)
-          'comment': _commentCtrl.text.trim(),
-      });
+      // Convert selected images to bytes
+      List<List<int>>? imageBytes;
+      if (_selectedImages.isNotEmpty) {
+        imageBytes = [];
+        for (final xfile in _selectedImages) {
+          final bytes = await xfile.readAsBytes();
+          imageBytes.add(bytes);
+        }
+      }
+
+      await _api.submitReview(
+        {
+          'jobId': widget.jobId,
+          'overallRating': _overall,
+          if (_quality > 0) 'workQualityRating': _quality,
+          if (_behavior > 0) 'behaviorRating': _behavior,
+          if (_smoothness > 0) 'smoothnessRating': _smoothness,
+          if (_commentCtrl.text.trim().isNotEmpty)
+            'comment': _commentCtrl.text.trim(),
+        },
+        imageBytes,
+      );
       if (mounted) {
         showSnack(context, 'Review submitted! Thank you.', ok: true);
         Navigator.pushNamedAndRemoveUntil(context, '/dashboard', (_) => false);
@@ -170,6 +209,87 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+
+              // Image upload section (optional)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('📷 Upload Images (Optional)',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          color: kBlack)),
+                  const SizedBox(height: 12),
+                  GestureDetector(
+                    onTap: _pickImages,
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: kBg,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: kDivider, width: 1),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(Icons.image_outlined, size: 40, color: kGrey),
+                          const SizedBox(height: 8),
+                          const Text('Tap to add images (max 5)',
+                              style: TextStyle(color: kGrey, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_selectedImages.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 100,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _selectedImages.length,
+                        itemBuilder: (_, i) => Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Stack(
+                            children: [
+                              Container(
+                                width: 100,
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: kDivider),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.file(
+                                    io.File(_selectedImages[i].path),
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                top: 4,
+                                right: 4,
+                                child: GestureDetector(
+                                  onTap: () => _removeImage(i),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: kRed,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    padding: const EdgeInsets.all(4),
+                                    child: const Icon(Icons.close_rounded,
+                                        color: kWhite, size: 14),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                ],
+              ),
 
               // Blockchain badge
               Container(

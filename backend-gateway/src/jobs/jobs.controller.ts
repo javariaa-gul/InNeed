@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Body, Param, UseGuards,
-  Request, Delete, ParseIntPipe,
+  Request, Delete, ParseIntPipe, Patch,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
@@ -95,6 +95,15 @@ export class JobsController {
   @Post(':id/complete')
   complete(@Param('id', ParseIntPipe) jobId: number, @Request() req: any) {
     return this.svc.completeJob(req.user.userId, jobId);
+  }
+
+  @Patch(':id/status')
+  updateStatus(
+    @Param('id', ParseIntPipe) jobId: number,
+    @Body() body: { status: string },
+    @Request() req: any,
+  ) {
+    return this.svc.updateJobStatus(req.user.userId, jobId, body.status);
   }
 
   @Post(':id/relist')

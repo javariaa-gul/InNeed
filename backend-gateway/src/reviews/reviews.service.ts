@@ -29,7 +29,8 @@ export class ReviewsService {
   async submitReview(
     reviewerId: number,
     dto: CreateReviewDto,
-    imageUrls: string[] = [],
+    beforeImageUrl?: string,
+    afterImageUrl?: string,
   ): Promise<Review> {
     const job = await this.jobRepo.findOne({ where: { id: dto.jobId } });
     if (!job) throw new NotFoundException('Job not found');
@@ -60,7 +61,9 @@ export class ReviewsService {
       behaviorRating: dto.behaviorRating ? Number(dto.behaviorRating) : undefined,
       smoothnessRating: dto.smoothnessRating ? Number(dto.smoothnessRating) : undefined,
       comment: dto.comment?.trim(),
-      imageUrls: imageUrls,
+      beforeImageUrl: beforeImageUrl || null,
+      afterImageUrl: afterImageUrl || null,
+      imageUrls: [beforeImageUrl, afterImageUrl].filter((url) => url) as string[],
     });
 
     const saved = await this.reviewRepo.save(review);

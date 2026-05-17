@@ -14,15 +14,11 @@ import 'screens/review_screen.dart';
 import 'screens/active_job_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // ─── Initialize App Configuration ─────────────────────────────────────────
-  // Load environment-specific API URLs
-  // In production, these should come from environment variables or build config
-  appConfig.initialize(); // Uses defaults, can be customized per environment
-
+  appConfig.initialize();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
@@ -81,6 +77,13 @@ class ApkaHunarApp extends StatelessWidget {
           case '/profile':
             final userId = settings.arguments as int?;
             return _slide(ProfileScreen(userId: userId));
+          case '/settings':
+            final args = settings.arguments as Map<String, dynamic>?;
+            return _slide(SettingsScreen(
+              user: args?['user'],
+              onLogout: args?['onLogout'] ?? () {},
+              onRefresh: args?['onRefresh'] ?? () {},
+            ));
           default:
             return _fade(const LoginScreen());
         }

@@ -28,13 +28,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   async handleConnection(client: Socket) {
     try {
+      // Accept token from multiple possible places: auth, query (web), or headers
       const token =
         (client.handshake.auth?.token as string) ||
+        (client.handshake.query?.token as string) ||
         (client.handshake.headers?.authorization as string)?.replace('Bearer ', '');
       if (!token) { client.disconnect(); return; }
       const payload = this.jwtService.verify(token);
-      client.data.userId = payload.sub;
-      this.userSockets.set(payload.sub, client.id);
+      const uid = typeof payload.sub === 'string' ? Number(payload.sub) : payload.sub;
+      client.data.userId = uid;
+      this.userSockets.set(uid, client.id);
     } catch {
       client.disconnect();
     }
@@ -76,11 +79,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       message: payload.message.trim(),
     });
     const saved = await this.chatRepo.save(msg);
+    
+    // Reload with sender relation to get sender name
+    const savedWithSender = await this.chatRepo.findOne({
+      where: { id: saved.id },
+      relations: ['sender'],
+    });
 
     const outgoing = {
       id: saved.id,
       jobId: saved.jobId,
       senderId,
+      senderName: savedWithSender?.sender?.fullName ?? 'User',
+      receiverId: payload.receiverId,
       message: saved.message,
       createdAt: saved.createdAt,
     };

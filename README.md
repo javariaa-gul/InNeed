@@ -100,9 +100,9 @@ cp .env.example .env.development
 docker-compose up -d
 
 # 4. Verify services
-curl http://localhost:3000/api           # Swagger API docs
-curl http://localhost:3000/health        # Health check
-curl http://localhost:5050               # PgAdmin
+curl http://192.168.0.47:3000/api           # Swagger API docs
+curl http://192.168.0.47:3000/health        # Health check
+curl http://192.168.0.47:5050               # PgAdmin
 
 # 5. View logs
 docker-compose logs -f gateway
@@ -112,12 +112,12 @@ docker-compose logs -f gateway
 
 | Service | URL | Purpose |
 |---------|-----|---------|
-| API Gateway | `http://localhost:3000` | REST API & WebSocket |
-| Swagger Docs | `http://localhost:3000/api` | API documentation |
-| AI Service | `http://localhost:8000/docs` | FastAPI docs |
-| Database | `localhost:5432` | PostgreSQL |
-| PgAdmin | `http://localhost:5050` | DB management |
-| Blockchain | `http://localhost:3001` | Smart contracts |
+| API Gateway | `http://192.168.0.47:3000` | REST API & WebSocket |
+| Swagger Docs | `http://192.168.0.47:3000/api` | API documentation |
+| AI Service | `http://192.168.0.47:8000/docs` | FastAPI docs |
+| Database | `192.168.0.47:5432` | PostgreSQL |
+| PgAdmin | `http://192.168.0.47:5050` | DB management |
+| Blockchain | `http://192.168.0.47:3001` | Smart contracts |
 
 ---
 
@@ -146,6 +146,8 @@ CORS_ORIGIN=https://your-domain.com
 ```
 
 **⚠️ IMPORTANT:** Never commit `.env` files. Use `.env.example` as template.
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for free hosting deployment steps and service connection details.
 
 See [SECURITY.md](./SECURITY.md) for detailed security configuration.
 
@@ -280,7 +282,7 @@ POST   /reviews                 # Submit review
 GET    /reviews/user/:userId    # Get user reviews
 ```
 
-**Full API documentation:** http://localhost:3000/api (Swagger UI)
+**Full API documentation:** http://192.168.0.47:3000/api (Swagger UI)
 
 ---
 
@@ -511,4 +513,4 @@ See [SECURITY.md](./SECURITY.md) for detailed security guidelines.
 For detailed setup and deployment information:
 - **Getting Started:** [DEPLOYMENT.md](./DEPLOYMENT.md)
 - **Security Guide:** [SECURITY.md](./SECURITY.md)
-- **API Docs:** http://localhost:3000/api (after `docker-compose up`)
+- **API Docs:** http://192.168.0.47:3000/api (after `docker-compose up`)

@@ -324,32 +324,95 @@ export class JobsService {
 
   // ── COMPLETE JOB (TRIGGERS REVIEW) ─────────────────────────────────────────
   async completeJob(userId: number, jobId: number): Promise<Job> {
-    const job = await this.jobRepo.findOne({ where: { id: jobId, status: JobStatus.ACTIVE } });
-    if (!job) throw new NotFoundException('Active job not found');
-    if (job.posterId !== userId && job.acceptedSeekerId !== userId) throw new ForbiddenException();
+    const job = await this.jobRepo.findOne({ where: { id: jobId } });
+    if (!job) throw new NotFoundException('Job not found');
+    if (job.posterId !== userId && job.acceptedSeekerId !== userId) {
+      throw new ForbiddenException('Not authorized to complete this job');
+    }
+    if (job.status === JobStatus.COMPLETE) {
+      throw new BadRequestException('Job is already completed');
+    }
+    if (job.status === JobStatus.CANCELLED) {
+      throw new BadRequestException('Cancelled jobs cannot be completed');
+    }
+    if (job.status !== JobStatus.ACTIVE) {
+      throw new BadRequestException('Job is not currently active');
+    }
+    if (!job.acceptedSeekerId) {
+      throw new BadRequestException('No worker assigned to this job');
+    }
 
     await this.jobRepo.update(jobId, { status: JobStatus.COMPLETE });
     const updated = await this.jobRepo.findOne({ where: { id: jobId } });
 
     // ✅ Notify both parties to submit reviews
-    this.chatGateway.sendToUser(job.posterId, 'job_completed', { 
-      jobId, 
+    this.chatGateway.sendToUser(job.posterId, 'job_completed', {
+      jobId,
       revieweeId: job.acceptedSeekerId,
-      message: 'Job completed! Please submit your review.'
+      message: 'Job completed! Please submit your review.',
     });
-    
-    if (job.acceptedSeekerId) {
-      this.chatGateway.sendToUser(job.acceptedSeekerId, 'job_completed', { 
-        jobId, 
-        revieweeId: job.posterId,
-        message: 'Job completed! Please submit your review.'
-      });
-    }
-    
+
+    this.chatGateway.sendToUser(job.acceptedSeekerId, 'job_completed', {
+      jobId,
+      revieweeId: job.posterId,
+      message: 'Job completed! Please submit your review.',
+    });
+
     return updated!;
   }
 
   // ── RE-LIST JOB ────────────────────────────────────────────────────────────
+  async updateJobStatus(userId: number, jobId: number, status: string): Promise<Job> {
+    const job = await this.jobRepo.findOne({ where: { id: jobId } });
+    if (!job) throw new NotFoundException('Job not found');
+    if (job.posterId !== userId && job.acceptedSeekerId !== userId) {
+      throw new ForbiddenException('Not authorized');
+    }
+    // Map frontend-friendly status keys to internal JobStatus enum values
+    const mapping: Record<string, JobStatus> = {
+      accepted: JobStatus.ACTIVE,
+      started: JobStatus.ACTIVE,
+      in_progress: JobStatus.ACTIVE,
+      active: JobStatus.ACTIVE,
+      open: JobStatus.OPEN,
+      complete: JobStatus.COMPLETE,
+      completed: JobStatus.COMPLETE,
+      cancelled: JobStatus.CANCELLED,
+    };
+
+    const mapped = mapping[status.toLowerCase().trim()];
+    if (!mapped) throw new BadRequestException('Invalid status');
+
+    if (mapped === JobStatus.ACTIVE) {
+      if (job.status !== JobStatus.ACTIVE) {
+        throw new BadRequestException('Job is not currently active');
+      }
+      if (!job.acceptedSeekerId) {
+        throw new BadRequestException('No worker is assigned to this job');
+      }
+    }
+
+    await this.jobRepo.update(jobId, { status: mapped });
+    const updated = await this.jobRepo.findOne({ where: { id: jobId } });
+
+    // Notify both parties of status update without failing the request if notifications fail.
+    try {
+      this.chatGateway.sendToUser(job.posterId, 'job_status_updated', { jobId, status });
+    } catch (error) {
+      console.error('Failed to notify poster of job status update:', error);
+    }
+
+    if (job.acceptedSeekerId) {
+      try {
+        this.chatGateway.sendToUser(job.acceptedSeekerId, 'job_status_updated', { jobId, status });
+      } catch (error) {
+        console.error('Failed to notify seeker of job status update:', error);
+      }
+    }
+
+    return updated!;
+  }
+
   async relistJob(posterId: number, jobId: number): Promise<Job> {
     const job = await this.jobRepo.findOne({ where: { id: jobId, posterId } });
     if (!job) throw new NotFoundException('Job not found');

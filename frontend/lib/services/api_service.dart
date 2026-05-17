@@ -355,15 +355,50 @@ class ApiService {
   // ─── REVIEWS ──────────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> submitReview(
     Map<String, dynamic> data,
+    List<List<int>>? imageBytes,
   ) async {
-    final res = await http
-        .post(
-          Uri.parse(appConfig.endpoint('/reviews')),
-          headers: await _headers(),
-          body: jsonEncode(data),
-        )
-        .timeout(const Duration(seconds: 15));
-    return _parse(res) as Map<String, dynamic>;
+    // Send as multipart form data to match backend expectation
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse(appConfig.endpoint('/reviews')),
+    );
+
+    request.headers.addAll(await _headers());
+    request.headers.remove('Content-Type'); // Let dio set it for multipart
+
+    // Add text fields
+    request.fields['jobId'] = data['jobId'].toString();
+    request.fields['overallRating'] = data['overallRating'].toString();
+    if (data['workQualityRating'] != null) {
+      request.fields['workQualityRating'] =
+          data['workQualityRating'].toString();
+    }
+    if (data['behaviorRating'] != null) {
+      request.fields['behaviorRating'] = data['behaviorRating'].toString();
+    }
+    if (data['smoothnessRating'] != null) {
+      request.fields['smoothnessRating'] = data['smoothnessRating'].toString();
+    }
+    if (data['comment'] != null) {
+      request.fields['comment'] = data['comment'].toString();
+    }
+
+    // Add image files if provided
+    if (imageBytes != null && imageBytes.isNotEmpty) {
+      for (int i = 0; i < imageBytes.length; i++) {
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'images',
+            imageBytes[i],
+            filename: 'review_image_$i.jpg',
+          ),
+        );
+      }
+    }
+
+    final streamed = await request.send().timeout(const Duration(seconds: 30));
+    final response = await http.Response.fromStream(streamed);
+    return _parse(response) as Map<String, dynamic>;
   }
 
   Future<bool> hasReviewed(int jobId) async {
@@ -394,6 +429,35 @@ class ApiService {
         )
         .timeout(const Duration(seconds: 15));
     return _parse(res) as Map<String, dynamic>;
+  }
+
+  // ─── JOB STATUS / ACTIVITY ────────────────────────────────────────────────
+  Future<Map<String, dynamic>> updateJobStatus(int jobId, String status) async {
+    final res = await http
+        .patch(
+          Uri.parse(appConfig.endpoint('/jobs/$jobId/status')),
+          headers: await _headers(),
+          body: jsonEncode({'status': status}),
+        )
+        .timeout(const Duration(seconds: 15));
+    return _parse(res) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> uploadImage(
+      List<int> bytes, String filename) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse(appConfig.endpoint('/jobs/upload-image')),
+    );
+    request.headers.addAll(await _headers());
+    request.files.add(http.MultipartFile.fromBytes(
+      'file',
+      bytes,
+      filename: filename,
+    ));
+    final streamed = await request.send().timeout(const Duration(seconds: 30));
+    final response = await http.Response.fromStream(streamed);
+    return _parse(response) as Map<String, dynamic>;
   }
 
   // ─── AI MATCHING ──────────────────────────────────────────────────────────

@@ -363,14 +363,26 @@ class _SignupScreenState extends State<SignupScreen> {
                     color: _lat != null ? Colors.greenAccent : splashLime),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                  _lat != null
-                      ? 'Location Captured ✓'
-                      : 'Tap to capture location',
-                  style: TextStyle(
-                      color: _lat != null ? Colors.greenAccent : Colors.white70,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                      _lat != null
+                          ? 'Location Captured ✓'
+                          : 'Tap to capture location',
+                      style: TextStyle(
+                          color: _lat != null ? Colors.greenAccent : Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600)),
+                  if (_lat != null)
+                    Text(
+                      'Area & city will be auto-detected',
+                      style: TextStyle(
+                          color: Colors.greenAccent.withValues(alpha: 0.7),
+                          fontSize: 10),
+                    ),
+                ],
+              ),
             ),
           ],
         ),

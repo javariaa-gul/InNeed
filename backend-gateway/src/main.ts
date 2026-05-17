@@ -38,7 +38,7 @@ async function bootstrap() {
       .build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup(configService.swagger.path, app, document);
-    console.log(`📚 Swagger API documentation: http://localhost:${configService.port}/api`);
+    console.log(`📚 Swagger API documentation: http://192.168.0.47:${configService.port}/api`);
   }
 
   // ─── Validate Configuration ──────────────────────────────────────────────
@@ -48,7 +48,7 @@ async function bootstrap() {
   await app.listen(configService.port, '0.0.0.0');
   console.log(`\n✅ Apka Hunar Gateway running on port ${configService.port}`);
   console.log(`📡 Environment: ${configService.environment.toUpperCase()}`);
-  const corsOrigins = configService.isDevelopment ? 'All localhost ports (development mode)' : configService.corsOrigins.join(', ');
+  const corsOrigins = configService.isDevelopment ? 'All 192.168.0.47 ports (development mode)' : configService.corsOrigins.join(', ');
   console.log(`🔒 CORS Origins: ${corsOrigins}\n`);
 }
 

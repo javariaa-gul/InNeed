@@ -15,6 +15,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(payload: any) {
     if (!payload?.sub) throw new UnauthorizedException('Invalid token payload');
-    return { userId: payload.sub, phoneNumber: payload.phoneNumber, role: payload.role };
+    // Ensure userId is numeric to avoid type-mismatch when comparing against DB ids
+    const uid = typeof payload.sub === 'string' ? Number(payload.sub) : payload.sub;
+    return { userId: uid, phoneNumber: payload.phoneNumber, role: payload.role };
   }
 }

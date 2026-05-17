@@ -43,6 +43,10 @@ export class Job {
   @Column({ nullable: true })
   acceptedSeekerId?: number;
 
+  @ManyToOne(() => User, { eager: false, nullable: true })
+  @JoinColumn({ name: 'acceptedSeekerId' })
+  acceptedSeeker?: User;
+
   @Column()
   title: string;
 

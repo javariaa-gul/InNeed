@@ -214,7 +214,7 @@ export class AppModule {}
 **2. Test Your Endpoint**
 
 ```bash
-curl -X POST http://localhost:3000/feature \
+curl -X POST http://192.168.0.47:3000/feature \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{"name": "test"}'

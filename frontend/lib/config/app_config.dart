@@ -4,9 +4,9 @@
 import 'package:flutter/foundation.dart';
 
 class AppConfig {
-  static const String _defaultBaseUrl = 'http://localhost:3000';
-  static const String _defaultAiUrl = 'http://localhost:8000';
-  static const String _defaultWsUrl = 'http://localhost:3000';
+  static const String _defaultBaseUrl = 'http://192.168.0.47:3000';
+  static const String _defaultAiUrl = 'http://192.168.0.47:8000';
+  static const String _defaultWsUrl = 'http://192.168.0.47:3000';
 
   // ─── Singleton Pattern ───────────────────────────────────────────────────
   static final AppConfig _instance = AppConfig._internal();
@@ -18,17 +18,17 @@ class AppConfig {
   // ─── Configuration Properties ────────────────────────────────────────────
   /// Backend API base URL
   /// Set via environment variable: FLUTTER_API_URL
-  /// Default: http://localhost:3000
+  /// Default: http://192.168.0.47:3000
   late String _baseUrl = _defaultBaseUrl;
 
   /// AI Service URL
   /// Set via environment variable: FLUTTER_AI_URL
-  /// Default: http://localhost:8000
+  /// Default: http://192.168.0.47:8000
   late String _aiUrl = _defaultAiUrl;
 
   /// WebSocket URL
   /// Set via environment variable: FLUTTER_WS_URL
-  /// Default: http://localhost:3000
+  /// Default: http://192.168.0.47:3000
   late String _wsUrl = _defaultWsUrl;
 
   // ─── Public Getters ─────────────────────────────────────────────────────

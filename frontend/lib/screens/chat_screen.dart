@@ -9,11 +9,12 @@ class ChatScreen extends StatefulWidget {
   final int jobId;
   final int otherUserId;
   final String otherName;
-  const ChatScreen(
-      {super.key,
-      required this.jobId,
-      required this.otherUserId,
-      required this.otherName});
+  const ChatScreen({
+    super.key,
+    required this.jobId,
+    required this.otherUserId,
+    required this.otherName,
+  });
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
@@ -26,6 +27,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _loading = true;
   bool _sending = false;
   int? _myId;
+  final String _socketKey = 'message_received_chat';
 
   @override
   void initState() {
@@ -46,23 +48,47 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         setState(() {
           _msgs = raw.map((m) => ChatMessageModel.fromJson(m)).toList();
+          _loading = false;
         });
       }
       SocketService().markRead(widget.jobId);
       _scrollToBottom();
     } catch (_) {
-    } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   void _listenSocket() {
-    SocketService().on('message_received', (d) {
-      if ((d['jobId'] as int?) == widget.jobId && mounted) {
+    // Use unique event key to avoid conflicts with dashboard listener
+    SocketService().off(_socketKey);
+    SocketService().on(_socketKey, (d) {
+      final msgJobId = d['jobId'];
+      final sameJob = msgJobId == widget.jobId ||
+          msgJobId?.toString() == widget.jobId.toString();
+      if (sameJob && mounted) {
         final msg = ChatMessageModel.fromJson(d);
         setState(() => _msgs.add(msg));
         _scrollToBottom();
         SocketService().markRead(widget.jobId);
+      }
+    });
+    // Also listen on standard event
+    SocketService().on('message_received', (d) {
+      final msgJobId = d['jobId'];
+      final sameJob = msgJobId == widget.jobId ||
+          msgJobId?.toString() == widget.jobId.toString();
+      if (sameJob && mounted) {
+        final msg = ChatMessageModel.fromJson(d);
+        // Avoid duplicate from optimistic add
+        final alreadyExists = _msgs.any((m) =>
+            m.senderId == (_myId ?? 0) &&
+            m.message == d['message'] &&
+            DateTime.now().difference(m.createdAt).inSeconds < 5);
+        if (!alreadyExists) {
+          setState(() => _msgs.add(msg));
+          _scrollToBottom();
+          SocketService().markRead(widget.jobId);
+        }
       }
     });
   }
@@ -96,9 +122,10 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
 
     try {
-      SocketService().sendMessage(
+      await SocketService().sendMessage(
           jobId: widget.jobId, receiverId: widget.otherUserId, message: text);
-    } catch (_) {
+    } catch (e) {
+      if (mounted) showSnack(context, 'Unable to send message: $e', err: true);
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -106,79 +133,92 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    SocketService().off('message_received');
+    SocketService().off(_socketKey);
     _msgCtrl.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: kBg,
-        appBar: AppBar(
-          leading: const BackButton(color: kWhite),
-          title: Row(children: [
-            Container(
-                width: 34,
-                height: 34,
-                decoration:
-                    BoxDecoration(gradient: kBlueGrad, shape: BoxShape.circle),
-                child: Center(
-                    child: Text(widget.otherName[0].toUpperCase(),
-                        style: const TextStyle(
-                            color: kWhite,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 14)))),
-            const SizedBox(width: 10),
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(widget.otherName,
-                  style: const TextStyle(
-                      color: kWhite,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800)),
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: kBg,
+      appBar: AppBar(
+        backgroundColor: kBlack,
+        leading: const BackButton(color: kWhite),
+        title: Row(children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF9F77E),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                widget.otherName.isNotEmpty
+                    ? widget.otherName[0].toUpperCase()
+                    : '?',
+                style: const TextStyle(
+                    color: kBlack, fontWeight: FontWeight.w900, fontSize: 15),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(widget.otherName,
+                style: const TextStyle(
+                    color: kWhite, fontSize: 14, fontWeight: FontWeight.w800)),
+            Row(children: [
+              Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                      color: kGreen, shape: BoxShape.circle)),
+              const SizedBox(width: 5),
               const Text('Job Active',
-                  style: TextStyle(
-                      color: kTealGreen,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600)),
+                  style: TextStyle(color: kGreen, fontSize: 10)),
             ]),
           ]),
-          actions: [
-            IconButton(
-              icon: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                      color: kWhite.withValues(alpha: 0.1),
-                      shape: BoxShape.circle),
-                  child:
-                      const Icon(Icons.call_outlined, color: kWhite, size: 18)),
-              onPressed: () =>
-                  showSnack(context, '📞 Call feature coming soon!'),
-              tooltip: 'Call',
-            ),
-          ],
-        ),
-        body: Column(children: [
-          Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator(color: kBlue))
-                  : _msgs.isEmpty
-                      ? _emptyChat()
-                      : ListView.builder(
-                          controller: _scroll,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                          itemCount: _msgs.length,
-                          itemBuilder: (_, i) => _bubble(_msgs[i]),
-                        )),
-          _inputBar(),
         ]),
-      );
+      ),
+      body: Column(children: [
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator(color: kBlack))
+              : _msgs.isEmpty
+                  ? _emptyChat()
+                  : ListView.builder(
+                      controller: _scroll,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      itemCount: _msgs.length,
+                      itemBuilder: (_, i) => _bubble(_msgs[i]),
+                    ),
+        ),
+        _inputBar(),
+      ]),
+    );
+  }
 
   Widget _bubble(ChatMessageModel msg) {
     final mine = msg.senderId == _myId;
     final time =
         '${msg.createdAt.hour.toString().padLeft(2, '0')}:${msg.createdAt.minute.toString().padLeft(2, '0')}';
+
+    // Tick indicators for mine
+    Widget tick() {
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        Text(time, style: const TextStyle(color: kGrey, fontSize: 9)),
+        const SizedBox(width: 4),
+        Icon(
+          msg.isRead ? Icons.done_all_rounded : Icons.done_rounded,
+          size: 13,
+          color: msg.isRead ? Colors.blue : kGrey,
+        ),
+      ]);
+    }
+
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -186,92 +226,105 @@ class _ChatScreenState extends State<ChatScreen> {
         constraints:
             BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
         child: Column(
-            crossAxisAlignment:
-                mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  gradient: mine ? kBlueGrad : null,
-                  color: mine ? null : kWhite,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(18),
-                    topRight: const Radius.circular(18),
-                    bottomLeft: Radius.circular(mine ? 18 : 4),
-                    bottomRight: Radius.circular(mine ? 4 : 18),
-                  ),
-                  boxShadow: kShadow,
+          crossAxisAlignment:
+              mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: mine ? kBlack : kWhite,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(18),
+                  topRight: const Radius.circular(18),
+                  bottomLeft: Radius.circular(mine ? 18 : 4),
+                  bottomRight: Radius.circular(mine ? 4 : 18),
                 ),
-                child: Text(msg.message,
-                    style: TextStyle(
-                        color: mine ? kWhite : kBlack,
-                        fontSize: 14,
-                        height: 1.4)),
+                boxShadow: kShadow,
               ),
-              const SizedBox(height: 3),
-              Text(time, style: const TextStyle(color: kGrey, fontSize: 10)),
-            ]),
+              child: Text(msg.message,
+                  style: TextStyle(
+                      color: mine ? kWhite : kBlack,
+                      fontSize: 14,
+                      height: 1.4)),
+            ),
+            const SizedBox(height: 3),
+            mine
+                ? tick()
+                : Text(time, style: const TextStyle(color: kGrey, fontSize: 9)),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _inputBar() => Container(
-        color: kWhite,
-        padding: EdgeInsets.only(
-            left: 16,
-            right: 8,
-            top: 10,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 12),
-        child: Row(children: [
-          Expanded(
+  Widget _inputBar() => SafeArea(
+        child: Container(
+          color: kWhite,
+          padding: EdgeInsets.only(
+              left: 16,
+              right: 8,
+              top: 10,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 10),
+          child: Row(children: [
+            Expanded(
               child: Container(
-            decoration: BoxDecoration(
-                color: kBg,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: kDivider)),
-            child: TextField(
-              controller: _msgCtrl,
-              onSubmitted: (_) => _send(),
-              style: const TextStyle(fontSize: 14, color: kBlack),
-              decoration: const InputDecoration(
-                  hintText: 'Type a message…',
-                  border: InputBorder.none,
-                  filled: false,
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 16, vertical: 12)),
+                decoration: BoxDecoration(
+                    color: kBg,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: kDivider)),
+                child: TextField(
+                  controller: _msgCtrl,
+                  onSubmitted: (_) => _send(),
+                  textCapitalization: TextCapitalization.sentences,
+                  style: const TextStyle(fontSize: 14, color: kBlack),
+                  decoration: const InputDecoration(
+                      hintText: 'Type a message…',
+                      border: InputBorder.none,
+                      filled: false,
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 12)),
+                ),
+              ),
             ),
-          )),
-          const SizedBox(width: 8),
-          GestureDetector(
-              onTap: _send,
-              child: Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                      gradient: kBlueGrad,
-                      shape: BoxShape.circle,
-                      boxShadow: kBlueShadow),
-                  child:
-                      const Icon(Icons.send_rounded, color: kWhite, size: 20))),
-        ]),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _sending ? null : _send,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: _sending ? kGrey : kBlack,
+                  shape: BoxShape.circle,
+                ),
+                child: _sending
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: CircularProgressIndicator(
+                            color: kWhite, strokeWidth: 2))
+                    : const Icon(Icons.send_rounded, color: kWhite, size: 20),
+              ),
+            ),
+          ]),
+        ),
       );
 
   Widget _emptyChat() => Center(
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Container(
-            width: 80,
-            height: 80,
-            decoration:
-                BoxDecoration(gradient: kBlueGrad, shape: BoxShape.circle),
-            child: const Icon(Icons.chat_bubble_outline_rounded,
-                color: kWhite, size: 36)),
-        const SizedBox(height: 16),
-        const Text('Start the Conversation',
-            style: TextStyle(
-                fontWeight: FontWeight.w800, fontSize: 17, color: kBlack)),
-        const SizedBox(height: 8),
-        const Text('Say hello and coordinate the work!',
-            style: TextStyle(color: kGrey, fontSize: 13)),
-      ]));
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(
+              width: 80,
+              height: 80,
+              decoration:
+                  const BoxDecoration(color: kBlack, shape: BoxShape.circle),
+              child: const Icon(Icons.chat_bubble_outline_rounded,
+                  color: kWhite, size: 36)),
+          const SizedBox(height: 16),
+          const Text('Start the Conversation',
+              style: TextStyle(
+                  fontWeight: FontWeight.w800, fontSize: 17, color: kBlack)),
+          const SizedBox(height: 8),
+          const Text('Say hello and coordinate the work!',
+              style: TextStyle(color: kGrey, fontSize: 13)),
+        ]),
+      );
 }

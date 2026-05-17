@@ -3,24 +3,33 @@
 # ============================================================================
 
 # ─── Environment Variables ────────────────────────────────────────────────
-# Never commit environment files with actual credentials
+# Never commit real credentials or secret files
 .env
 .env.local
+.env.*.local
 .env.production
 .env.staging
-.env*.local
 .env.development
+.env.test
+.env.test.local
 
-# ─── Node Modules ─────────────────────────────────────────────────────────
+# ─── Node Modules / Build ──────────────────────────────────────────────────
 node_modules/
-package-lock.json
-yarn.lock
 .npm
 
 # ─── Build Artifacts ──────────────────────────────────────────────────────
 dist/
 build/
 *.tsbuildinfo
+
+# ─── Flutter / Dart ───────────────────────────────────────────────────────
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/.pub-cache/
+**/ios/Flutter/.last_build_id
+**/flutter_export_environment.sh
 
 # ─── Logs ─────────────────────────────────────────────────────────────────
 *.log

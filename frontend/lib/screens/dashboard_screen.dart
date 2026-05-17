@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../services/socket_service.dart';
+import '../services/notification_service.dart';
 import '../utils/app_theme.dart';
 import 'active_job_screen.dart';
 import 'profile_screen.dart';
-import 'posted_jobs_screen.dart';
+import 'poster_home_screen.dart';
+import 'seeker_home_screen.dart';
+import 'notifications_screen.dart';
+import 'settings_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -16,214 +20,231 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen>
     with TickerProviderStateMixin {
   final _api = ApiService();
+  final _notifs = NotificationService();
   int _tab = 0;
   bool _loading = true, _switching = false;
   Map<String, dynamic>? _user;
-  AnimationController? _scaleCtrl;
 
   String get _role => _user?['activeRole']?.toString() ?? 'worker';
   bool get _isPoster => _role == 'employer';
-  String get _firstName =>
-      (_user?['fullName'] as String?)?.split(' ').first ?? 'there';
-  String get _fullName => _user?['fullName'] as String? ?? 'there';
-  double get _wRating => (_user?['workerRating'] as num?)?.toDouble() ?? 0;
-  double get _eRating => (_user?['employerRating'] as num?)?.toDouble() ?? 0;
-  int get _wCount => (_user?['workerRatingCount'] as num?)?.toInt() ?? 0;
-  int get _eCount => (_user?['employerRatingCount'] as num?)?.toInt() ?? 0;
-  String get _userCity => _user?['city'] ?? 'Your Location';
-  String get _userArea => _user?['area'] ?? '';
-  String get _userLocation =>
-      _userArea.isNotEmpty ? '$_userArea, $_userCity' : _userCity;
 
   @override
   void initState() {
     super.initState();
-    _scaleCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
     _init();
   }
 
-  @override
-  void dispose() {
-    _scaleCtrl?.dispose();
-    super.dispose();
-  }
-
   Future<void> _init() async {
-    // Try to load cached user data first
     try {
       final cached = await StorageService.getCachedUser();
-      if (cached != null && mounted) {
-        setState(() => _user = cached);
-        debugPrint('✅ Loaded cached user: ${_user?['fullName']}');
-      }
-    } catch (e) {
-      debugPrint('⚠️ Failed to load cached user: $e');
-    }
-
-    // Then fetch fresh data from server
+      if (cached != null && mounted) setState(() => _user = cached);
+    } catch (_) {}
     await _load();
     try {
       await SocketService().connect();
       _setupSockets();
     } catch (e) {
-      debugPrint('⚠️ Socket connection failed in dashboard: $e');
-      // Continue without socket - app can still function
+      debugPrint('Socket: $e');
     }
   }
 
   void _setupSockets() {
     SocketService().on('bid_accepted', (d) {
-      if (mounted) showSnack(context, '🎉 Your bid was accepted!', ok: true);
+      if (!mounted) return;
+      _notifs.addNotification(
+          title: '🎉 Bid Accepted!',
+          body: 'Your bid was accepted.',
+          type: 'bid',
+          data: d);
+      showSnack(context, '🎉 Your bid was accepted!', ok: true);
+    });
+
+    SocketService().on('new_bid', (d) {
+      if (!mounted) return;
+      final name = d['seekerName'] ?? 'Someone';
+      _notifs.addNotification(
+          title: '📩 New Bid',
+          body: '$name placed a bid on your job',
+          type: 'bid',
+          data: d);
+    });
+
+    SocketService().on('bid_updated', (data) {
+      if (!mounted) return;
+      final name = data['seekerName'] ?? 'Someone';
+      _notifs.addNotification(
+          title: '🔄 Counter Offer',
+          body: '$name sent a counter offer',
+          type: 'offer',
+          data: data);
+      _showCounterOfferDialog(data);
     });
 
     SocketService().on('job_relisted', (d) {
-      if (mounted) {
-        showSnack(context, '🔄 A job was re-listed. You can bid again!');
-      }
+      if (!mounted) return;
+      _notifs.addNotification(
+          title: '🔄 Job Re-listed',
+          body: 'A job was re-listed. You can bid again!',
+          type: 'job',
+          data: d);
     });
 
     SocketService().on('job_completed', (d) {
-      if (mounted) {
-        final jobId = d['jobId'] as int?;
-        final revieweeId = d['revieweeId'] as int?;
-        if (jobId != null && revieweeId != null) {
-          Navigator.pushNamed(context, '/review', arguments: {
-            'jobId': jobId,
-            'revieweeId': revieweeId,
-            'revieweeName': 'Other Party',
-          });
-        }
+      if (!mounted) return;
+      final jobId = d['jobId'] as int?;
+      final revieweeId = d['revieweeId'] as int?;
+      if (jobId != null && revieweeId != null) {
+        _notifs.addNotification(
+            title: '✅ Job Completed',
+            body: 'Please leave a review.',
+            type: 'review',
+            data: d);
+        Navigator.pushNamed(context, '/review', arguments: {
+          'jobId': jobId,
+          'revieweeId': revieweeId,
+          'revieweeName': 'Other Party',
+        });
       }
     });
 
     SocketService().on('counter_bid_accepted', (d) {
-      if (mounted) {
-        showSnack(
-            context, '✅ Your counter offer was accepted! Job is now active.',
-            ok: true);
-        _load();
-      }
+      if (!mounted) return;
+      _notifs.addNotification(
+          title: '✅ Counter Offer Accepted',
+          body: 'Your counter offer was accepted! Job is now active.',
+          type: 'offer',
+          data: d);
+      showSnack(context, '✅ Counter offer accepted!', ok: true);
+      _load();
     });
 
     SocketService().on('counter_bid_rejected', (d) {
-      if (mounted) {
-        showSnack(context, '❌ Your counter offer was rejected.', err: true);
-      }
+      if (!mounted) return;
+      _notifs.addNotification(
+          title: '❌ Counter Offer Rejected',
+          body: 'Your counter offer was rejected.',
+          type: 'offer',
+          data: d);
+      showSnack(context, '❌ Counter offer rejected.', err: true);
     });
 
-    // ✅ COUNTER-OFFER POPUP FOR POSTER
-    SocketService().on('bid_updated', (data) {
+    SocketService().on('message_received', (d) {
       if (!mounted) return;
+      final senderId = d['senderId'] as int?;
+      final jobId = d['jobId'] as int?;
+      final message = d['message'] as String? ?? 'You received a message';
 
-      final previousPrice = data['previousPrice'];
-      final newPrice = data['offeredPrice'];
-      final seekerName = data['seekerName'] ?? 'Someone';
-      final jobTitle = data['jobTitle'] ?? 'a job';
-      final bidId = data['bidId'];
-      final jobId = data['jobId'];
+      _notifs.addNotification(
+          title: '💬 New Message',
+          body:
+              message.length > 50 ? '${message.substring(0, 50)}...' : message,
+          type: 'chat',
+          data: {
+            ...d,
+            'otherUserId': senderId,
+            'otherName': d['senderName'] ?? 'User',
+          });
+    });
 
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Icon(Icons.swap_horiz_rounded, color: Colors.amber.shade700),
-              const SizedBox(width: 8),
-              const Text('New Counter Offer!',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-            ],
+    SocketService().on('job_status_updated', (d) {
+      if (!mounted) return;
+      _notifs.addNotification(
+          title: '📊 Job Status Updated',
+          body: 'Job progress has been updated',
+          type: 'status',
+          data: d);
+    });
+  }
+
+  void _showCounterOfferDialog(Map<String, dynamic> data) {
+    final previousPrice = data['previousPrice'];
+    final newPrice = data['offeredPrice'];
+    final seekerName = data['seekerName'] ?? 'Someone';
+    final jobTitle = data['jobTitle'] ?? 'a job';
+    final bidId = data['bidId'];
+    final jobId = data['jobId'];
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(children: [
+          Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                  color: Colors.amber.shade100,
+                  borderRadius: BorderRadius.circular(12)),
+              child:
+                  Icon(Icons.swap_horiz_rounded, color: Colors.amber.shade700)),
+          const SizedBox(width: 12),
+          const Text('Counter Offer!',
+              style: TextStyle(fontWeight: FontWeight.w900)),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('$seekerName sent a counter-offer for "$jobTitle"'),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.amber.shade200)),
+            child: Column(children: [
+              Text('Previous: Rs. $previousPrice',
+                  style: const TextStyle(
+                      decoration: TextDecoration.lineThrough, color: kGrey)),
+              const SizedBox(height: 8),
+              Text('New Offer: Rs. $newPrice',
+                  style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      color: kGreen)),
+            ]),
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('$seekerName sent a counter-offer for "$jobTitle":'),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.amber.shade200),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      'Previous: Rs. $previousPrice',
-                      style: const TextStyle(
-                          decoration: TextDecoration.lineThrough,
-                          color: Colors.grey),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'New Offer: Rs. $newPrice',
-                      style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green),
-                    ),
-                  ],
-                ),
-              ),
-              if (data['message'] != null) ...[
-                const SizedBox(height: 12),
-                Text('💬 "${data['message']}"',
-                    style: TextStyle(
-                        fontStyle: FontStyle.italic,
-                        color: Colors.grey.shade600)),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
+          if (data['message'] != null) ...[
+            const SizedBox(height: 12),
+            Text('💬 "${data['message']}"',
+                style: TextStyle(
+                    fontStyle: FontStyle.italic, color: Colors.grey.shade600)),
+          ],
+        ]),
+        actions: [
+          TextButton(
               onPressed: () async {
                 Navigator.pop(ctx);
                 try {
                   await _api.rejectCounterBid(jobId, bidId);
-                  if (mounted) {
-                    showSnack(context, 'Counter offer rejected', ok: true);
-                  }
+                  if (mounted) showSnack(context, 'Counter offer rejected');
                 } catch (e) {
                   if (mounted) showSnack(context, e.toString(), err: true);
                 }
               },
-              child: const Text('Reject', style: TextStyle(color: Colors.red)),
-            ),
-            ElevatedButton(
+              child: const Text('Reject', style: TextStyle(color: kRed))),
+          ElevatedButton(
               onPressed: () async {
                 Navigator.pop(ctx);
                 try {
                   await _api.acceptCounterBid(jobId, bidId);
                   if (mounted) {
-                    showSnack(
-                        context, '✅ Counter offer accepted! Tracking started.',
+                    showSnack(context, '✅ Accepted! Tracking started.',
                         ok: true);
                     Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const ActiveJobScreen()),
-                    );
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const ActiveJobScreen()));
                   }
                 } catch (e) {
                   if (mounted) showSnack(context, e.toString(), err: true);
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Accept Offer'),
-            ),
-          ],
-        ),
-      );
-    });
+                  backgroundColor: kGreen, foregroundColor: kWhite),
+              child: const Text('Accept',
+                  style: TextStyle(fontWeight: FontWeight.w800))),
+        ],
+      ),
+    );
   }
 
   Future<void> _load() async {
@@ -243,7 +264,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     try {
       final r = await _api.switchRole();
       if (mounted) {
-        setState(() => _user?['activeRole'] = r['activeRole']);
+        setState(() {
+          _user?['activeRole'] = r['activeRole'];
+          _tab = 0;
+        });
         showSnack(context,
             'Switched to ${(r['activeRole'] as String).toUpperCase()} mode',
             ok: true);
@@ -257,411 +281,434 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Future<void> _logout() async {
     SocketService().disconnect();
+    _notifs.clear();
     await StorageService.clearAuthData();
     if (mounted) Navigator.pushReplacementNamed(context, '/login');
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (_loading && _user == null) {
       return const Scaffold(
           backgroundColor: kBg,
-          body: Center(child: CircularProgressIndicator(color: kBlue)));
+          body: Center(child: CircularProgressIndicator(color: kBlack)));
     }
-    return Scaffold(
-      backgroundColor: kBg,
-      body: IndexedStack(
-        index: _tab,
-        children: [
-          _homeTab(), // 0: Home
-          _activeJobTab(), // 1: Active Jobs
-          _profileTab(), // 2: Profile
-          _alertsTab(), // 3: Alerts
-          _settingsTab(), // 4: Settings (repurposed from old settings)
-        ],
+    return AnimatedBuilder(
+      animation: _notifs,
+      builder: (context, _) => Scaffold(
+        backgroundColor: kBg,
+        body: IndexedStack(
+          index: _tab,
+          children: [
+            _isPoster
+                ? PosterHomeScreen(user: _user, onRefresh: _load)
+                : SeekerHomeScreen(user: _user, onRefresh: _load),
+            const ActiveJobScreen(),
+            NotificationsScreen(notifs: _notifs),
+            _profileTab(),
+          ],
+        ),
+        bottomNavigationBar: _buildNavBar(),
       ),
-      bottomNavigationBar: _buildCustomNavBar(),
     );
   }
 
-  Widget _buildCustomNavBar() {
-    const navItems = [
-      {'icon': Icons.home_rounded, 'label': 'Home'},
-      {'icon': Icons.shopping_bag_rounded, 'label': 'Active'},
-      {'icon': Icons.add_rounded, 'label': 'Create'},
-      {'icon': Icons.notifications_rounded, 'label': 'Alerts'},
-      {'icon': Icons.person_rounded, 'label': 'Profile'},
-    ];
-
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        // Main navbar container
+  Widget _buildNavBar() {
+    if (_isPoster) {
+      return Stack(clipBehavior: Clip.none, children: [
         Container(
-          margin: const EdgeInsets.only(bottom: 16, left: 35, right: 35),
+          margin: const EdgeInsets.only(bottom: 16, left: 24, right: 24),
           decoration: BoxDecoration(
-            color: Colors.black,
+            color: kBlack,
             borderRadius: BorderRadius.circular(32),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 16,
-                offset: const Offset(0, -3),
-              ),
+                  color: Colors.black.withValues(alpha: 0.15),
+                  blurRadius: 20,
+                  offset: const Offset(0, -4))
             ],
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(32),
             child: SafeArea(
               top: false,
-              child: Stack(
-                children: [
-                  // Navigation items
-                  Padding(
-                    padding: const EdgeInsets.only(
-                        top: 10, left: 20, right: 20, bottom: 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Home
-                        _buildNavItem(0, navItems[0]),
-                        // Active
-                        _buildNavItem(1, navItems[1]),
-                        // Spacer for floating button
-                        const SizedBox(width: 50),
-                        // Alerts
-                        _buildNavItem(3, navItems[3]),
-                        // Profile
-                        _buildNavItem(4, navItems[4]),
-                      ],
-                    ),
-                  ),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.only(
+                    top: 10, left: 16, right: 16, bottom: 8),
+                child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _navItem(0, Icons.home_rounded, 'Home'),
+                      _navItem(1, Icons.shopping_bag_rounded, 'Active'),
+                      const SizedBox(width: 52),
+                      _navBadge(
+                          2, Icons.notifications_rounded, _notifs.unreadCount),
+                      _navItem(3, Icons.person_rounded, 'Profile'),
+                    ]),
               ),
             ),
           ),
         ),
-        // Floating plus button (outside clipping)
         Positioned(
-          bottom: 38,
+          bottom: 36,
           left: 0,
           right: 0,
           child: Center(
-            child: _buildFloatingPlusButton(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNavItem(int index, Map<String, dynamic> item) {
-    final isActive = _tab == index;
-    final iconColor = isActive ? const Color(0xFFF9F77E) : Colors.white;
-
-    return GestureDetector(
-      onTap: () {
-        setState(() => _tab = index);
-      },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            item['icon'] as IconData,
-            color: iconColor,
-            size: 28,
-          ),
-          if (isActive) ...[
-            const SizedBox(height: 4),
-            Container(
-              width: 6,
-              height: 6,
-              decoration: const BoxDecoration(
-                color: Color(0xFFF9F77E),
-                shape: BoxShape.circle,
+            child: GestureDetector(
+              onTap: () => Navigator.pushNamed(context, '/post-job'),
+              child: Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF9F77E),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                        color: const Color(0xFFF9F77E).withValues(alpha: 0.5),
+                        blurRadius: 20,
+                        offset: const Offset(0, 6))
+                  ],
+                ),
+                child: const Icon(Icons.add_rounded, color: kBlack, size: 30),
               ),
             ),
-          ],
+          ),
+        ),
+      ]);
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16, left: 24, right: 24),
+      decoration: BoxDecoration(
+        color: kBlack,
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 20,
+              offset: const Offset(0, -4))
         ],
       ),
-    );
-  }
-
-  Widget _buildFloatingPlusButton() {
-    return GestureDetector(
-      onTap: () {
-        Navigator.pushNamed(context, _isPoster ? '/post-job' : '/job-feed');
-      },
-      child: Container(
-        width: 62,
-        height: 62,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF9F77E),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFFF9F77E).withValues(alpha: 0.4),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: const Icon(
-          Icons.add_rounded,
-          color: Colors.black,
-          size: 30,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding:
+                const EdgeInsets.only(top: 10, left: 20, right: 20, bottom: 8),
+            child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _navItem(0, Icons.home_rounded, 'Home'),
+                  _navItem(1, Icons.shopping_bag_rounded, 'Active'),
+                  _navBadge(
+                      2, Icons.notifications_rounded, _notifs.unreadCount),
+                  _navItem(3, Icons.person_rounded, 'Profile'),
+                ]),
+          ),
         ),
       ),
     );
   }
 
-  Widget _homeTab() => RefreshIndicator(
-      onRefresh: _load,
-      color: kBlue,
-      child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverAppBar(
-              expandedHeight: 100,
-              pinned: true,
-              backgroundColor: kWhite,
-              automaticallyImplyLeading: false,
-              actions: [
-                Padding(
-                    padding: const EdgeInsets.only(right: 16),
-                    child: Center(
-                        child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
+  Widget _navItem(int idx, IconData icon, String label) {
+    final active = _tab == idx;
+    return GestureDetector(
+      onTap: () => setState(() => _tab = idx),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon,
+              color: active ? const Color(0xFFF9F77E) : Colors.white54,
+              size: 26),
+          if (active)
+            Container(
+              margin: const EdgeInsets.only(top: 4),
+              width: 4,
+              height: 4,
+              decoration: const BoxDecoration(
+                  color: Color(0xFFF9F77E), shape: BoxShape.circle),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _navBadge(int idx, IconData icon, int count) {
+    final active = _tab == idx;
+    return GestureDetector(
+      onTap: () => setState(() => _tab = idx),
+      child: Stack(clipBehavior: Clip.none, children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon,
+                color: active ? const Color(0xFFF9F77E) : Colors.white54,
+                size: 26),
+            if (active)
+              Container(
+                margin: const EdgeInsets.only(top: 4),
+                width: 4,
+                height: 4,
+                decoration: const BoxDecoration(
+                    color: Color(0xFFF9F77E), shape: BoxShape.circle),
+              ),
+          ]),
+        ),
+        if (count > 0)
+          Positioned(
+            top: 0,
+            right: 4,
+            child: Container(
+              padding: const EdgeInsets.all(3),
+              decoration: const BoxDecoration(
+                  color: Color(0xFFF9F77E), shape: BoxShape.circle),
+              constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
+              child: Text(count > 99 ? '99+' : '$count',
+                  style: const TextStyle(
+                      color: kBlack, fontSize: 9, fontWeight: FontWeight.w900),
+                  textAlign: TextAlign.center),
+            ),
+          ),
+      ]),
+    );
+  }
+
+  Widget _profileTab() {
+    final initial = (_user?['fullName'] as String? ?? 'A')[0].toUpperCase();
+    final role = _user?['activeRole']?.toString() ?? 'worker';
+    final isPoster = role == 'employer';
+    final wRating = (_user?['workerRating'] as num?)?.toDouble() ?? 0;
+    final eRating = (_user?['employerRating'] as num?)?.toDouble() ?? 0;
+    final wCount = (_user?['workerRatingCount'] as num?)?.toInt() ?? 0;
+    final eCount = (_user?['employerRatingCount'] as num?)?.toInt() ?? 0;
+    final area = _user?['area'] as String? ?? '';
+    final city = _user?['city'] as String? ?? '';
+    final location = area.isNotEmpty && city.isNotEmpty ? '$area, $city' : city;
+
+    return CustomScrollView(slivers: [
+      SliverAppBar(
+        expandedHeight: 260,
+        pinned: true,
+        backgroundColor: kBlack,
+        automaticallyImplyLeading: false,
+        title: const Text('Profile',
+            style: TextStyle(color: kWhite, fontWeight: FontWeight.w800)),
+        actions: [
+          IconButton(
+              icon: const Icon(Icons.edit_outlined, color: kWhite, size: 20),
+              onPressed: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const ProfileScreen()))
+                  .then((_) => _load())),
+        ],
+        flexibleSpace: FlexibleSpaceBar(
+          background: Stack(children: [
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                    colors: [Color(0xFF0D0D0D), Color(0xFF1A1A2E)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight),
+              ),
+            ),
+            Positioned(
+                top: -30,
+                right: -30,
+                child: Container(
+                    width: 160,
+                    height: 160,
+                    decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color:
+                            const Color(0xFFF9F77E).withValues(alpha: 0.06)))),
+            Positioned(
+                bottom: 0,
+                left: -20,
+                child: Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: kPurple.withValues(alpha: 0.08)))),
+            Center(
+              child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 60),
+                    Container(
+                      width: 90,
+                      height: 90,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF9F77E),
-                        borderRadius: BorderRadius.circular(8),
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                            colors: [Color(0xFFF9F77E), Color(0xFFE8E660)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight),
+                        boxShadow: [
+                          BoxShadow(
+                              color: const Color(0xFFF9F77E)
+                                  .withValues(alpha: 0.4),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8))
+                        ],
                       ),
-                      child: Text(
-                        _isPoster ? 'Employer' : 'Worker',
+                      child: Center(
+                          child: Text(initial,
+                              style: const TextStyle(
+                                  color: kBlack,
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.w900))),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(_user?['fullName'] ?? '',
                         style: const TextStyle(
-                            color: kBlack,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700),
-                      ),
-                    )))
-              ],
-              elevation: 0,
-              flexibleSpace: FlexibleSpaceBar(
-                  background: Padding(
-                      padding: const EdgeInsets.only(
-                          left: 20, right: 20, top: 16, bottom: 16),
+                            color: kWhite,
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 6),
+                    buildTag(isPoster ? 'EMPLOYER' : 'WORKER',
+                        isPoster ? kPurple : const Color(0xFFF9F77E)),
+                  ]),
+            ),
+          ]),
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(children: [
+            // Switch role card
+            GestureDetector(
+              onTap: _switching ? null : _switchRole,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: isPoster
+                      ? const LinearGradient(colors: [kPurple, kPurpleLight])
+                      : const LinearGradient(
+                          colors: [Color(0xFFF9F77E), Color(0xFFE8E660)]),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: kShadow,
+                ),
+                child: Row(children: [
+                  Icon(
+                      isPoster
+                          ? Icons.build_rounded
+                          : Icons.business_center_rounded,
+                      color: isPoster ? kWhite : kBlack),
+                  const SizedBox(width: 12),
+                  Expanded(
                       child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text('Hi, $_fullName',
-                                style: const TextStyle(
-                                    color: kBlack,
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w800)),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                const Icon(Icons.location_on_rounded,
-                                    color: kBlack, size: 14),
-                                const SizedBox(width: 4),
-                                Text(_userLocation,
-                                    style: TextStyle(
-                                        color: kBlack.withValues(alpha: 0.6),
-                                        fontSize: 12)),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            // Role box removed from here - now in top right
-                          ]))),
-            ),
-            SliverToBoxAdapter(
-                child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(children: [
-                      _sectionHeader('Quick Actions'),
-                      const SizedBox(height: 14),
-                      _actionCard(
-                        icon: _isPoster
-                            ? Icons.add_circle_rounded
-                            : Icons.style_rounded,
-                        gradient: kBlueGrad,
-                        title:
-                            _isPoster ? 'Post a New Job' : 'Browse Job Cards',
-                        subtitle: _isPoster
-                            ? 'Fill the form, AI finds workers'
-                            : 'Swipe through jobs for you',
-                        badge: _isPoster ? null : 'AI',
-                        onTap: () => Navigator.pushNamed(
-                            context, _isPoster ? '/post-job' : '/job-feed'),
-                      ),
-                      const SizedBox(height: 12),
-                      if (_isPoster)
-                        _actionCard(
-                          icon: Icons.list_alt_rounded,
-                          gradient: kPurpleGrad,
-                          title: 'My Posted Jobs',
-                          subtitle: 'View bids and job status',
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const PostedJobsScreen()),
-                          ),
-                        ),
-                      _actionCard(
-                        icon: Icons.work_history_rounded,
-                        gradient: kPurpleGrad,
-                        title: _isPoster ? 'Active Job' : 'My Active Job',
-                        subtitle: _isPoster
-                            ? 'Track your posted active job'
-                            : 'Track your current assignment',
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const ActiveJobScreen()),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      _sectionHeader('My Ratings'),
-                      const SizedBox(height: 14),
-                      _ratingsRow(),
-                      const SizedBox(height: 40),
-                    ]))),
-          ]));
-
-  Widget _sectionHeader(String t) => Align(
-      alignment: Alignment.centerLeft,
-      child: Text(t,
-          style: const TextStyle(
-              fontSize: 17, fontWeight: FontWeight.w800, color: kBlack)));
-
-  Widget _roleSwitchCard() => ACard(
-      padding: const EdgeInsets.all(18),
-      child: Row(children: [
-        Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-                gradient: _isPoster ? kPurpleGrad : kBlueGrad,
-                borderRadius: BorderRadius.circular(16)),
-            child: Icon(
-                _isPoster ? Icons.business_center_rounded : Icons.build_rounded,
-                color: kWhite,
-                size: 26)),
-        const SizedBox(width: 16),
-        Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Active Mode',
-              style: TextStyle(
-                  color: kGrey, fontSize: 11, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 3),
-          Text(_isPoster ? '📋 POSTER MODE' : '🔧 SEEKER MODE',
-              style: const TextStyle(
-                  color: kBlack, fontWeight: FontWeight.w900, fontSize: 15)),
-          Text(_isPoster ? 'Post jobs & hire workers' : 'Browse & bid on jobs',
-              style: const TextStyle(color: kGrey, fontSize: 11)),
-        ])),
-        const SizedBox(width: 12),
-        GestureDetector(
-            onTap: _switching ? null : _switchRole,
-            child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                    gradient: _isPoster ? kBlueGrad : kPurpleGrad,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: kBlueShadow),
-                child: _switching
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(
-                            color: kWhite, strokeWidth: 2))
-                    : const Text('Switch',
-                        style: TextStyle(
-                            color: kWhite,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13)))),
-      ]));
-
-  Widget _actionCard({
-    required IconData icon,
-    required Gradient gradient,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-    String? badge,
-  }) =>
-      GestureDetector(
-          onTap: onTap,
-          child: ACard(
-              padding: const EdgeInsets.all(16),
-              child: Row(children: [
-                Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                        gradient: gradient,
-                        borderRadius: BorderRadius.circular(16)),
-                    child: Icon(icon, color: kWhite, size: 26)),
-                const SizedBox(width: 16),
-                Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                      Row(children: [
-                        Text(title,
-                            style: const TextStyle(
+                        Text('Currently: ${isPoster ? "Employer" : "Worker"}',
+                            style: TextStyle(
+                                color: isPoster ? kWhite : kBlack,
                                 fontWeight: FontWeight.w800,
-                                fontSize: 14,
-                                color: kBlack)),
-                        if (badge != null) ...[
-                          const SizedBox(width: 8),
-                          buildTag(badge, kBlue)
-                        ],
-                      ]),
-                      const SizedBox(height: 3),
-                      Text(subtitle,
-                          style: const TextStyle(color: kGrey, fontSize: 12)),
-                    ])),
-                Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                        color: kBg, borderRadius: BorderRadius.circular(10)),
-                    child: const Icon(Icons.arrow_forward_ios_rounded,
-                        size: 14, color: kGrey)),
-              ])));
+                                fontSize: 14)),
+                        Text(
+                            'Tap to switch to ${isPoster ? "Worker" : "Employer"} mode',
+                            style: TextStyle(
+                                color: isPoster
+                                    ? kWhite.withValues(alpha: 0.7)
+                                    : kBlack.withValues(alpha: 0.6),
+                                fontSize: 11)),
+                      ])),
+                  _switching
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              color: isPoster ? kWhite : kBlack,
+                              strokeWidth: 2))
+                      : Icon(Icons.swap_horiz_rounded,
+                          color: isPoster ? kWhite : kBlack),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Ratings row
+            Row(children: [
+              Expanded(child: _ratingCard('As Worker', wRating, wCount)),
+              const SizedBox(width: 12),
+              Expanded(child: _ratingCard('As Employer', eRating, eCount)),
+            ]),
+            const SizedBox(height: 20),
+            ACard(
+                child: Column(children: [
+              const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Personal Info',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                          color: kBlack))),
+              const SizedBox(height: 16),
+              _infoRow(Icons.phone_rounded, 'Phone',
+                  _user?['phoneNumber'] ?? '—', kBlue),
+              Divider(height: 24, color: kDivider),
+              _infoRow(Icons.location_on_rounded, 'Location',
+                  location.isNotEmpty ? location : 'Not set', kPurple),
+              Divider(height: 24, color: kDivider),
+              _infoRow(Icons.flag_rounded, 'Country',
+                  _user?['country'] ?? 'Not set', kGreen),
+            ])),
+            const SizedBox(height: 20),
+            // Settings button
+            GestureDetector(
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => SettingsScreen(
+                          user: _user, onLogout: _logout, onRefresh: _load))),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                    color: kWhite,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: kShadow),
+                child: Row(children: [
+                  Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                          color: kGrey.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12)),
+                      child: const Icon(Icons.settings_rounded,
+                          color: kGrey, size: 20)),
+                  const SizedBox(width: 14),
+                  const Text('Settings',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: kBlack)),
+                  const Spacer(),
+                  const Icon(Icons.chevron_right_rounded, color: kGrey),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 40),
+          ]),
+        ),
+      ),
+    ]);
+  }
 
-  Widget _ratingsRow() => Row(children: [
-        Expanded(child: _ratingCard('As Worker', _wRating, _wCount, kBlueGrad)),
-        const SizedBox(width: 14),
-        Expanded(
-            child: _ratingCard('As Employer', _eRating, _eCount, kPurpleGrad)),
-      ]);
-
-  Widget _ratingCard(String label, double rating, int count, Gradient grad) =>
-      Container(
-        padding: const EdgeInsets.all(18),
+  Widget _ratingCard(String label, double rating, int count) => Container(
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
             color: kWhite,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: kShadow),
         child: Column(children: [
-          ShaderMask(
-              shaderCallback: (b) => grad.createShader(b),
-              child: Text(rating > 0 ? rating.toStringAsFixed(1) : '—',
-                  style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      color: kWhite))),
+          Text(rating > 0 ? rating.toStringAsFixed(1) : '—',
+              style: const TextStyle(
+                  fontSize: 24, fontWeight: FontWeight.w900, color: kBlack)),
           const SizedBox(height: 4),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Icon(Icons.star_rounded, size: 14, color: Colors.amber.shade600),
+            Icon(Icons.star_rounded, size: 13, color: Colors.amber.shade600),
             const SizedBox(width: 3),
             Text(label, style: const TextStyle(color: kGrey, fontSize: 11)),
           ]),
@@ -669,211 +716,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               style: const TextStyle(color: kGrey, fontSize: 10)),
         ]),
       );
-
-  Widget _activeJobTab() => Scaffold(
-        backgroundColor: kBg,
-        appBar: AppBar(
-          backgroundColor: kBlack,
-          title: const Text('Active Jobs'),
-          elevation: 0,
-          automaticallyImplyLeading: true,
-        ),
-        body: const ActiveJobScreen(),
-      );
-
-  Widget _alertsTab() => CustomScrollView(
-        slivers: [
-          const SliverAppBar(
-            pinned: true,
-            backgroundColor: kBlack,
-            automaticallyImplyLeading: false,
-            title: Text('Notifications'),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 60),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 80,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              color: kBlue.withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.notifications_none_rounded,
-                              color: kBlue,
-                              size: 40,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            'No Notifications Yet',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: kBlack,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'You\'ll see updates about your jobs here',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: kGrey,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      );
-
-  Widget _profileTab() {
-    final skills = ((_user?['skills'] as String?) ?? '')
-        .split(',')
-        .where((s) => s.trim().isNotEmpty)
-        .toList();
-    final initial = (_user?['fullName'] as String? ?? 'A')[0].toUpperCase();
-    return CustomScrollView(slivers: [
-      SliverAppBar(
-        expandedHeight: 240,
-        pinned: true,
-        backgroundColor: kBlack,
-        automaticallyImplyLeading: false,
-        title: const Text('My Profile'),
-        actions: [
-          IconButton(
-              icon: const Icon(Icons.edit_outlined, color: kWhite, size: 20),
-              onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                  ).then((_) => _load()))
-        ],
-        flexibleSpace: FlexibleSpaceBar(
-            background: Stack(children: [
-          Container(decoration: const BoxDecoration(gradient: kHeroGrad)),
-          Positioned(
-              top: -10,
-              right: -60,
-              child: Container(
-                  width: 200,
-                  height: 200,
-                  decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: kBlue.withValues(alpha: 0.05)))),
-          Center(
-              child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                const SizedBox(height: 50),
-                Container(
-                    width: 84,
-                    height: 84,
-                    decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: kBlueGrad,
-                        boxShadow: kBlueShadow),
-                    child: Center(
-                        child: Text(initial,
-                            style: const TextStyle(
-                                color: kWhite,
-                                fontSize: 34,
-                                fontWeight: FontWeight.w900)))),
-                const SizedBox(height: 12),
-                Text(_user?['fullName'] ?? '',
-                    style: const TextStyle(
-                        color: kWhite,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800)),
-                const SizedBox(height: 6),
-                buildTag(_role.toUpperCase(), kBlue),
-              ])),
-        ])),
-      ),
-      SliverToBoxAdapter(
-          child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(children: [
-                _ratingsRow(),
-                const SizedBox(height: 20),
-                ACard(
-                    child: Column(children: [
-                  const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('Personal Info',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 15,
-                              color: kBlack))),
-                  const SizedBox(height: 16),
-                  _infoRow(Icons.phone_rounded, 'Phone',
-                      _user?['phoneNumber'] ?? '—', kBlue),
-                  Divider(height: 24, color: kDivider),
-                  _infoRow(Icons.location_city_rounded, 'City',
-                      _user?['city'] ?? 'Not set', kPurple),
-                  Divider(height: 24, color: kDivider),
-                  _infoRow(Icons.flag_rounded, 'Country',
-                      _user?['country'] ?? 'Not set', kGreen),
-                ])),
-                if (!_isPoster && skills.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  ACard(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        Row(children: [
-                          Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                  gradient: kBlueGrad,
-                                  borderRadius: BorderRadius.circular(10)),
-                              child: const Icon(Icons.build_rounded,
-                                  color: kWhite, size: 16)),
-                          const SizedBox(width: 12),
-                          const Text('My Skills',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 15,
-                                  color: kBlack)),
-                        ]),
-                        const SizedBox(height: 14),
-                        Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: skills
-                                .map((s) => Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 14, vertical: 8),
-                                      decoration: BoxDecoration(
-                                          gradient: kBlueGrad,
-                                          borderRadius:
-                                              BorderRadius.circular(20)),
-                                      child: Text(s.trim(),
-                                          style: const TextStyle(
-                                              color: kWhite,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w700)),
-                                    ))
-                                .toList()),
-                      ])),
-                ],
-                const SizedBox(height: 40),
-              ]))),
-    ]);
-  }
 
   Widget _infoRow(IconData icon, String label, String value, Color color) =>
       Row(children: [
@@ -891,144 +733,4 @@ class _DashboardScreenState extends State<DashboardScreen>
             style: const TextStyle(
                 fontWeight: FontWeight.w700, fontSize: 13, color: kBlack)),
       ]);
-
-  Widget _settingsTab() => CustomScrollView(slivers: [
-        const SliverAppBar(
-            pinned: true,
-            backgroundColor: kBlack,
-            automaticallyImplyLeading: false,
-            title: Text('Settings')),
-        SliverToBoxAdapter(
-            child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(children: [
-                  ACard(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(children: [
-                        Container(
-                            width: 54,
-                            height: 54,
-                            decoration: BoxDecoration(
-                                gradient: kBlueGrad, shape: BoxShape.circle),
-                            child: Center(
-                                child: Text(
-                                    (_user?['fullName'] as String? ?? 'A')[0]
-                                        .toUpperCase(),
-                                    style: const TextStyle(
-                                        color: kWhite,
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.w900)))),
-                        const SizedBox(width: 14),
-                        Expanded(
-                            child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                              Text(_user?['fullName'] ?? '',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 15,
-                                      color: kBlack)),
-                              Text(_user?['phoneNumber'] ?? '',
-                                  style: const TextStyle(
-                                      color: kGrey, fontSize: 12)),
-                            ])),
-                        buildTag(
-                            _role.toUpperCase(), _isPoster ? kPurple : kBlue),
-                      ])),
-                  const SizedBox(height: 24),
-                  _settingsGroup('Account', [
-                    _settingRow(Icons.lock_outline_rounded, 'Change Password',
-                        kBlue, () {}),
-                    _settingRow(Icons.notifications_outlined, 'Notifications',
-                        kPurple, () {}),
-                    _settingRow(
-                        Icons.person_outline_rounded,
-                        'Edit Profile',
-                        kGreen,
-                        () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (_) => const ProfileScreen()))),
-                  ]),
-                  const SizedBox(height: 16),
-                  _settingsGroup('Support', [
-                    _settingRow(Icons.help_outline_rounded, 'Help & Support',
-                        kOrange, () {}),
-                    _settingRow(Icons.privacy_tip_outlined, 'Privacy Policy',
-                        Colors.teal, () {}),
-                    _settingRow(Icons.info_outline_rounded, 'About Apka Hunar',
-                        kGrey, () {}),
-                  ]),
-                  const SizedBox(height: 24),
-                  GestureDetector(
-                      onTap: _logout,
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                            color: kRed.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(16),
-                            border:
-                                Border.all(color: kRed.withValues(alpha: 0.2))),
-                        child: Row(children: [
-                          Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                  color: kRed.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(12)),
-                              child: const Icon(Icons.logout_rounded,
-                                  color: kRed, size: 20)),
-                          const SizedBox(width: 14),
-                          const Text('Logout',
-                              style: TextStyle(
-                                  color: kRed,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 14)),
-                          const Spacer(),
-                          const Icon(Icons.chevron_right_rounded, color: kRed),
-                        ]),
-                      )),
-                  const SizedBox(height: 40),
-                ]))),
-      ]);
-
-  Widget _settingsGroup(String label, List<Widget> rows) =>
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label.toUpperCase(),
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: kGrey.withValues(alpha: 0.8),
-                letterSpacing: 1.2)),
-        const SizedBox(height: 8),
-        ACard(
-            padding: EdgeInsets.zero,
-            child: Column(
-                children: List.generate(
-                    rows.length,
-                    (i) => Column(children: [
-                          rows[i],
-                          if (i < rows.length - 1)
-                            Divider(height: 0, indent: 70, color: kDivider),
-                        ])))),
-      ]);
-
-  Widget _settingRow(
-          IconData icon, String title, Color color, VoidCallback onTap) =>
-      ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(11)),
-            child: Icon(icon, color: color, size: 19)),
-        title: Text(title,
-            style: const TextStyle(
-                fontWeight: FontWeight.w700, fontSize: 14, color: kBlack)),
-        trailing:
-            const Icon(Icons.chevron_right_rounded, color: kGrey, size: 18),
-        onTap: onTap,
-      );
 }

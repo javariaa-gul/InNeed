@@ -44,6 +44,12 @@ export class Review {
   @Column({ nullable: true, type: 'text' })
   comment!: string;
 
+  @Column({ nullable: true })
+  beforeImageUrl!: string;
+
+  @Column({ nullable: true })
+  afterImageUrl!: string;
+
   @Column({ type: 'simple-array', nullable: true, default: '' })
   imageUrls!: string[];
 

@@ -6,7 +6,7 @@ import * as crypto from 'crypto';
 @Injectable()
 export class BlockchainService {
   private readonly blockchainUrl =
-    process.env.BLOCKCHAIN_SERVICE_URL ?? 'http://localhost:3001';
+    process.env.BLOCKCHAIN_SERVICE_URL ?? 'http://192.168.0.47:3001';
 
   constructor(private readonly httpService: HttpService) {}
 

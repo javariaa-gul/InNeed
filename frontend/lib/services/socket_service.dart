@@ -31,8 +31,12 @@ class SocketService {
 
     try {
       // Socket.io initialization with dynamic URL from config
+      final socketUrl = appConfig.wsUrl.endsWith('/ws')
+          ? appConfig.wsUrl
+          : '${appConfig.wsUrl.replaceAll(RegExp(r'/+$'), '')}/ws';
+
       _socket = io.io(
-          appConfig.wsUrl,
+          socketUrl,
           io.OptionBuilder()
               .setTransports(['websocket', 'polling']) // For Web/Chrome support
               .setExtraHeaders({'Authorization': 'Bearer $token'})
@@ -92,10 +96,6 @@ class SocketService {
   // Purana 'on' method as it is kaam karega
   void on(String event, MessageCallback cb) {
     _handlers.putIfAbsent(event, () => []).add(cb);
-    // Direct socket listener for efficiency
-    _socket?.on(event, (data) {
-      cb(data is Map<String, dynamic> ? data : {'data': data});
-    });
   }
 
   void off(String event) {
@@ -108,19 +108,39 @@ class SocketService {
   }
 
   // Socket.io uses .emit() instead of .sink.add()
-  void sendMessage(
-      {required int jobId, required int receiverId, required String message}) {
+  Future<void> sendMessage(
+      {required int jobId,
+      required int receiverId,
+      required String message}) async {
+    if (_socket == null || !_socket!.connected) {
+      try {
+        await connect();
+      } catch (e) {
+        debugPrint('⚠️ Socket reconnect failed: $e');
+      }
+    }
+
     if (_socket != null && _socket!.connected) {
       _socket!.emit('send_message', {
         'jobId': jobId,
         'receiverId': receiverId,
         'message': message,
       });
+    } else {
+      debugPrint('⚠️ sendMessage failed because socket is not connected');
     }
   }
 
   // Mark Read method (Ab ChatScreen error nahi dega)
-  void markRead(int jobId) {
+  Future<void> markRead(int jobId) async {
+    if (_socket == null || !_socket!.connected) {
+      try {
+        await connect();
+      } catch (e) {
+        debugPrint('⚠️ Socket reconnect failed for markRead: $e');
+      }
+    }
+
     if (_socket != null && _socket!.connected) {
       _socket!.emit('mark_read', {
         'jobId': jobId,

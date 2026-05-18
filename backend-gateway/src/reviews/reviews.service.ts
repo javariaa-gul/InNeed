@@ -34,6 +34,12 @@ export class ReviewsService {
   ): Promise<Review> {
     const requestedJobId = Number(dto.jobId);
     console.log(`ReviewsService: submitReview called for jobId=${dto.jobId} (parsed=${requestedJobId}) by reviewer=${reviewerId}`);
+
+    if (!Number.isInteger(requestedJobId) || requestedJobId <= 0) {
+      console.error(`ReviewsService: invalid jobId in request: ${dto.jobId}`);
+      throw new BadRequestException('Invalid or missing jobId');
+    }
+
     const job = await this.jobRepo.findOne({ where: { id: requestedJobId } });
     if (!job) {
       console.error(`ReviewsService: job not found for id=${requestedJobId}`);

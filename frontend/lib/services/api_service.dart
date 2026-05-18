@@ -353,8 +353,13 @@ class ApiService {
   }
 
   // ─── REVIEWS ──────────────────────────────────────────────────────────────
-  Future<Map<String, dynamic>> submitReview(
-    Map<String, dynamic> data, {
+  Future<Map<String, dynamic>> submitReview({
+    required int jobId,
+    required int overallRating,
+    int? workQualityRating,
+    int? behaviorRating,
+    int? smoothnessRating,
+    String? comment,
     required List<int> beforeImageBytes,
     required List<int> afterImageBytes,
   }) async {
@@ -368,20 +373,19 @@ class ApiService {
     request.headers.remove('Content-Type'); // Let dio set it for multipart
 
     // Add text fields
-    request.fields['jobId'] = data['jobId'].toString();
-    request.fields['overallRating'] = data['overallRating'].toString();
-    if (data['workQualityRating'] != null) {
-      request.fields['workQualityRating'] =
-          data['workQualityRating'].toString();
+    request.fields['jobId'] = jobId.toString();
+    request.fields['overallRating'] = overallRating.toString();
+    if (workQualityRating != null) {
+      request.fields['workQualityRating'] = workQualityRating.toString();
     }
-    if (data['behaviorRating'] != null) {
-      request.fields['behaviorRating'] = data['behaviorRating'].toString();
+    if (behaviorRating != null) {
+      request.fields['behaviorRating'] = behaviorRating.toString();
     }
-    if (data['smoothnessRating'] != null) {
-      request.fields['smoothnessRating'] = data['smoothnessRating'].toString();
+    if (smoothnessRating != null) {
+      request.fields['smoothnessRating'] = smoothnessRating.toString();
     }
-    if (data['comment'] != null) {
-      request.fields['comment'] = data['comment'].toString();
+    if (comment != null && comment.trim().isNotEmpty) {
+      request.fields['comment'] = comment.trim();
     }
 
     request.files.add(

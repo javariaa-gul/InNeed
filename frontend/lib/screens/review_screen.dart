@@ -83,15 +83,14 @@ class _ReviewScreenState extends State<ReviewScreen> {
     setState(() => _loading = true);
     try {
       await _api.submitReview(
-        {
-          'jobId': widget.jobId,
-          'overallRating': _overall,
-          if (_quality > 0) 'workQualityRating': _quality,
-          if (_behavior > 0) 'behaviorRating': _behavior,
-          if (_smoothness > 0) 'smoothnessRating': _smoothness,
-          if (_commentCtrl.text.trim().isNotEmpty)
-            'comment': _commentCtrl.text.trim(),
-        },
+        jobId: widget.jobId,
+        overallRating: _overall,
+        workQualityRating: _quality > 0 ? _quality : null,
+        behaviorRating: _behavior > 0 ? _behavior : null,
+        smoothnessRating: _smoothness > 0 ? _smoothness : null,
+        comment: _commentCtrl.text.trim().isNotEmpty
+            ? _commentCtrl.text.trim()
+            : null,
         beforeImageBytes: _beforeImageBytes!,
         afterImageBytes: _afterImageBytes!,
       );

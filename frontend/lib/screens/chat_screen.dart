@@ -67,11 +67,12 @@ class _ChatScreenState extends State<ChatScreen> {
           msgJobId?.toString() == widget.jobId.toString();
       if (sameJob && mounted) {
         final msg = ChatMessageModel.fromJson(d);
-        // Check if message already exists (optimistic add)
         final alreadyExists = _msgs.any((m) =>
-            m.senderId == msg.senderId &&
-            m.message == msg.message &&
-            DateTime.now().difference(m.createdAt).inSeconds < 5);
+            m.id == msg.id ||
+            (m.senderId == msg.senderId &&
+                m.receiverId == msg.receiverId &&
+                m.message == msg.message &&
+                m.createdAt.difference(msg.createdAt).inSeconds.abs() < 2));
         if (!alreadyExists) {
           setState(() => _msgs.add(msg));
           _scrollToBottom();
@@ -95,19 +96,6 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
     _msgCtrl.clear();
-
-    // Optimistic add
-    final optimistic = ChatMessageModel(
-      id: DateTime.now().millisecondsSinceEpoch,
-      jobId: widget.jobId,
-      senderId: _myId ?? 0,
-      receiverId: widget.otherUserId,
-      message: text,
-      isRead: false,
-      createdAt: DateTime.now(),
-    );
-    setState(() => _msgs.add(optimistic));
-    _scrollToBottom();
 
     try {
       await SocketService().sendMessage(

@@ -55,47 +55,96 @@ def calculate_time_score(dist_km: float, deadline_mins: int) -> float:
 @app.post("/match", response_model=MatchResult)
 def match_engine(req: MatchRequest):
     # Database se sirf active workers uthao (Skills ignore)
-    conn = psycopg2.connect(
-        host=os.getenv("DATABASE_HOST", "db"),
-        user=os.getenv("DATABASE_USER", "user_admin"),
-        password=os.getenv("DATABASE_PASSWORD", "password123"),
-        database=os.getenv("DATABASE_NAME", "apka_hunar_db")
-    )
-    
-    seekers = []
+    conn = None
     try:
+        conn = psycopg2.connect(
+            host=os.getenv("DATABASE_HOST", "db"),
+            user=os.getenv("DATABASE_USER", "user_admin"),
+            password=os.getenv("DATABASE_PASSWORD", "password123"),
+            database=os.getenv("DATABASE_NAME", "apka_hunar_db")
+        )
+        
+        seekers = []
         with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            cur.execute('SELECT id, "fullName", lat, lon FROM users WHERE "activeRole"=\'worker\'')
+            # ✅ Fixed: Use proper column names, handle optional fields
+            cur.execute('''
+                SELECT 
+                    id, 
+                    "fullName", 
+                    COALESCE(lat, 0) as lat,
+                    COALESCE(lon, 0) as lon
+                FROM users 
+                WHERE "activeRole" = %s
+                AND (lat IS NOT NULL AND lon IS NOT NULL AND lat != 0 AND lon != 0)
+            ''', ('worker',))
             rows = cur.fetchall()
             
         poster_loc = (req.lat, req.lon)
         
         for row in rows:
-            if not row['lat'] or not row['lon']: continue
-            
-            seeker_loc = (float(row['lat']), float(row['lon']))
-            dist = geodesic(poster_loc, seeker_loc).km
-            
-            # AI Inference Step
-            match_score = calculate_time_score(dist, req.urgency_minutes)
-            
-            if match_score > 0:
-                seekers.append({
-                    "id": row['id'],
-                    "name": row['fullName'],
-                    "distance_km": round(dist, 2),
-                    "ai_score": match_score,
-                    "confidence": "High" if match_score > 80 else "Fair"
-                })
+            try:
+                lat = float(row['lat'])
+                lon = float(row['lon'])
+                if lat == 0 or lon == 0:
+                    continue
+                    
+                seeker_loc = (lat, lon)
+                dist = geodesic(poster_loc, seeker_loc).km
+                
+                # AI Inference Step
+                match_score = calculate_time_score(dist, req.urgency_minutes)
+                
+                if match_score > 0:
+                    seekers.append({
+                        "id": row['id'],
+                        "name": row['fullName'],
+                        "distance_km": round(dist, 2),
+                        "ai_score": match_score,
+                        "confidence": "High" if match_score > 80 else "Fair"
+                    })
+            except Exception as row_error:
+                print(f"Error processing seeker {row.get('id')}: {row_error}")
+                continue
         
         # Sort by AI Score (Highest confidence first)
         seekers.sort(key=lambda x: x["ai_score"], reverse=True)
         
+        return MatchResult(
+            targeted_seeker_ids=[s["id"] for s in seekers[:50]],  # Top 50 matches
+            ranked_seekers=seekers[:50],
+            total_matches=len(seekers)
+        )
+        
+    except psycopg2.Error as db_error:
+        print(f"Database Error: {db_error}")
+        # ✅ Return empty result instead of 502 (graceful fallback)
+        return MatchResult(
+            targeted_seeker_ids=[],
+            ranked_seekers=[],
+            total_matches=0
+        )
+    except Exception as error:
+        print(f"Unexpected Error in /match: {error}")
+        return MatchResult(
+            targeted_seeker_ids=[],
+            ranked_seekers=[],
+            total_matches=0
+        )
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
-    return MatchResult(
-        targeted_seeker_ids=[s["id"] for s in seekers[:50]], # Top 50 matches
-        ranked_seekers=seekers[:50],
-        total_matches=len(seekers)
-    )
+@app.get("/health")
+def health():
+    """Health check endpoint"""
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv("DATABASE_HOST", "db"),
+            user=os.getenv("DATABASE_USER", "user_admin"),
+            password=os.getenv("DATABASE_PASSWORD", "password123"),
+            database=os.getenv("DATABASE_NAME", "apka_hunar_db")
+        )
+        conn.close()
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}

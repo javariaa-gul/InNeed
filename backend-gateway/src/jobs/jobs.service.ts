@@ -133,9 +133,9 @@ export class JobsService {
         }
       }
       
-      // ✅ Job has no targetedSeekerIds (AI matching not completed or no matches)
-      // → Do NOT show to any seeker
-      return false;
+      // ✅ FALLBACK: If job has no targetedSeekerIds or empty list after AI matching,
+      // show to all seekers for discovery (prevents zero listings when seekers lack location)
+      return true;
     });
   }
 

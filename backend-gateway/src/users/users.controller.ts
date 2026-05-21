@@ -12,6 +12,7 @@ import {
   Request,
   UseInterceptors,
   UploadedFile,
+  Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -27,20 +28,32 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 @ApiTags('users')
 @Controller('users')
 export class UsersController {
+  private readonly logger = new Logger(UsersController.name);
+
   constructor(
     private readonly usersService: UsersService,
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
-  // ─── PUBLIC ──────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────
+  // PUBLIC ENDPOINTS
+  // ─────────────────────────────────────────────────────────────────
 
   @Post('signup')
   @ApiOperation({ summary: 'Register a new user' })
   async signup(@Body() dto: CreateUserDto) {
+    this.logger.log(`[Signup] New user registration: phone=${dto.phoneNumber}`);
+
     const user = await this.usersService.create(dto);
     const token = await this.usersService.generateToken(user);
     const { password, ...result } = user as any;
-    return { message: 'Signup successful!', user: result, access_token: token, success: true };
+
+    return {
+      message: 'Signup successful!',
+      user: result,
+      access_token: token,
+      success: true,
+    };
   }
 
   @Post('login')
@@ -49,18 +62,35 @@ export class UsersController {
     if (!/^[0-9]{10,11}$/.test(dto.phoneNumber)) {
       throw new BadRequestException('Invalid phone number format');
     }
+
+    this.logger.log(`[Login] Attempting login for phone=${dto.phoneNumber}`);
+
     const user = await this.usersService.findByPhone(dto.phoneNumber);
-    if (!user) throw new UnauthorizedException('Invalid phone number or password');
+    if (!user) {
+      throw new UnauthorizedException('Invalid phone number or password');
+    }
 
     const match = await bcrypt.compare(dto.password, user.password);
-    if (!match) throw new UnauthorizedException('Invalid phone number or password');
+    if (!match) {
+      throw new UnauthorizedException('Invalid phone number or password');
+    }
 
     const token = await this.usersService.generateToken(user);
     const { password, ...result } = user as any;
-    return { message: 'Login successful!', user: result, access_token: token, success: true };
+
+    this.logger.log(`[Login] Successful login for userId=${user.id}`);
+
+    return {
+      message: 'Login successful!',
+      user: result,
+      access_token: token,
+      success: true,
+    };
   }
 
-  // ─── PROTECTED ───────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────
+  // PROTECTED ENDPOINTS
+  // ─────────────────────────────────────────────────────────────────
 
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -77,6 +107,8 @@ export class UsersController {
   @Patch('me')
   @ApiOperation({ summary: 'Update my profile' })
   async updateMyProfile(@Request() req: any, @Body() dto: UpdateUserDto) {
+    this.logger.log(`[Update Profile] userId=${req.user.userId}`);
+
     const user = await this.usersService.update(req.user.userId, dto);
     const { password, ...result } = user as any;
     return result;
@@ -88,16 +120,49 @@ export class UsersController {
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   @ApiOperation({ summary: 'Upload/change profile avatar' })
   async uploadAvatar(@Request() req: any, @UploadedFile() file: Express.Multer.File) {
-    if (!file) throw new BadRequestException('Image file is required');
+    try {
+      this.logger.log(`[Upload Avatar] userId=${req.user.userId}, file=${file?.originalname}`);
 
-    const url = await this.cloudinaryService.uploadImage(file, 'apka-hunar/avatars');
+      if (!file) {
+        throw new BadRequestException('Image file is required');
+      }
 
-    // Update user's avatarUrl in DB
-    await this.usersService.update(req.user.userId, { avatarUrl: url } as any);
+      // Validate file type
+      if (!file.mimetype.startsWith('image/')) {
+        throw new BadRequestException('File must be an image');
+      }
 
-    const user = await this.usersService.findOne(req.user.userId);
-    const { password, ...result } = user as any;
-    return { success: true, avatarUrl: url, user: result };
+      // Validate file size (5MB max)
+      const MAX_FILE_SIZE = 5 * 1024 * 1024;
+      if (file.size > MAX_FILE_SIZE) {
+        throw new BadRequestException('Image size exceeds 5MB limit');
+      }
+
+      // Upload to Cloudinary
+      this.logger.log(`[Upload Avatar] Uploading image to Cloudinary (${file.size} bytes)`);
+
+      const url = await this.cloudinaryService.uploadImage(file, 'apka-hunar/avatars');
+
+      this.logger.log(`[Upload Avatar] Cloud URL: ${url}`);
+
+      // Update user avatar in database
+      await this.usersService.update(req.user.userId, { avatarUrl: url } as any);
+
+      const user = await this.usersService.findOne(req.user.userId);
+      const { password, ...result } = user as any;
+
+      this.logger.log(`[Upload Avatar] Avatar updated successfully for userId=${req.user.userId}`);
+
+      return {
+        success: true,
+        message: 'Avatar uploaded successfully',
+        avatarUrl: url,
+        user: result,
+      };
+    } catch (error) {
+      this.logger.error('[Upload Avatar] Error:', error);
+      throw error;
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -105,6 +170,7 @@ export class UsersController {
   @Post('switch-role')
   @ApiOperation({ summary: 'Switch between Worker and Employer role' })
   async switchRole(@Request() req: any) {
+    this.logger.log(`[Switch Role] userId=${req.user.userId}`);
     return await this.usersService.switchRole(req.user.userId);
   }
 
@@ -127,8 +193,12 @@ export class UsersController {
   async markTutorialSeen(@Request() req: any) {
     try {
       await this.usersService.markTutorialSeen(req.user.userId);
-      return { success: true, message: 'Tutorial marked as seen' };
+      return {
+        success: true,
+        message: 'Tutorial marked as seen',
+      };
     } catch (error) {
+      this.logger.error('[Mark Tutorial Seen] Error:', error);
       throw error;
     }
   }

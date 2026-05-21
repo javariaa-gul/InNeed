@@ -132,6 +132,7 @@ class ApiService {
     final req = http.MultipartRequest('POST', uri);
     final headers = await _headers();
     req.headers.addAll(headers);
+    req.headers.remove('Content-Type'); // Let http set it for multipart
     req.files
         .add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
 
@@ -471,6 +472,7 @@ class ApiService {
       Uri.parse(appConfig.endpoint('/jobs/upload-image')),
     );
     request.headers.addAll(await _headers());
+    request.headers.remove('Content-Type'); // Let http set it for multipart
     request.files.add(http.MultipartFile.fromBytes(
       'file',
       bytes,

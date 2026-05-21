@@ -41,8 +41,8 @@ export class ReviewsService {
   async submitReview(
     reviewerId: number,
     dto: CreateReviewDto,
-    beforeImageUrl: string,
-    afterImageUrl: string,
+    beforeImageUrl?: string,
+    afterImageUrl?: string,
   ): Promise<Review> {
     this.logger.log(`[Review Submit] Starting for jobId=${dto.jobId}, reviewerId=${reviewerId}`);
 
@@ -57,9 +57,7 @@ export class ReviewsService {
         throw new BadRequestException('Overall rating must be between 1 and 5');
       }
 
-      if (!beforeImageUrl || !afterImageUrl) {
-        throw new BadRequestException('Before and after images are required');
-      }
+      // Images are optional now; allow reviews without images
 
       // Verify job exists
       const job = await this.jobRepo.findOne({
@@ -107,8 +105,8 @@ export class ReviewsService {
         reviewerId,
         revieweeId,
         revieweeRole,
-        overallRating: Number(dto.overallRating),
-        workQualityRating: dto.workQualityRating ? Number(dto.workQualityRating) : undefined,
+        beforeImageUrl?: string,
+        afterImageUrl?: string,
         behaviorRating: dto.behaviorRating ? Number(dto.behaviorRating) : undefined,
         smoothnessRating: dto.smoothnessRating ? Number(dto.smoothnessRating) : undefined,
         comment: dto.comment?.trim() || undefined,
@@ -123,9 +121,7 @@ export class ReviewsService {
 
       // ╔════════════════════════════════════════════════════════════════════╗
       // ║  BLOCKCHAIN: Create immutable record                             ║
-      // ╚════════════════════════════════════════════════════════════════════╝
-
-      try {
+          // Images are optional now; allow reviews without images
         const previousHashRecord = await this.hashRepo.findOne({
           order: { id: 'DESC' },
         });
@@ -145,8 +141,8 @@ export class ReviewsService {
           behaviorRating: savedReview.behaviorRating,
           smoothnessRating: savedReview.smoothnessRating,
           comment: savedReview.comment || '',
-          beforeImageUrl: savedReview.beforeImageUrl,
-          afterImageUrl: savedReview.afterImageUrl,
+          beforeImageUrl: savedReview.beforeImageUrl || '',
+          afterImageUrl: savedReview.afterImageUrl || '',
           createdAt: savedReview.createdAt.toISOString(),
         };
 
@@ -297,8 +293,8 @@ export class ReviewsService {
         behaviorRating: review.behaviorRating,
         smoothnessRating: review.smoothnessRating,
         comment: review.comment || '',
-        beforeImageUrl: review.beforeImageUrl,
-        afterImageUrl: review.afterImageUrl,
+        beforeImageUrl: review.beforeImageUrl || '',
+        afterImageUrl: review.afterImageUrl || '',
         createdAt: review.createdAt.toISOString(),
       };
 

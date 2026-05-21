@@ -3,7 +3,7 @@ import '../services/api_service.dart';
 import '../services/socket_service.dart';
 import '../services/storage_service.dart';
 import '../utils/app_theme.dart';
-import 'package:image_picker/image_picker.dart';
+// Image upload disabled; image_picker removed
 import 'profile_reviews_screen.dart';
 import 'settings_screen.dart';
 
@@ -52,33 +52,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _load();
   }
 
-  Future<void> _changeAvatar() async {
-    try {
-      final picker = ImagePicker();
-      final XFile? picked = await picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1200,
-        maxHeight: 1200,
-        imageQuality: 85,
-      );
-      if (picked == null) return;
+  // Avatar change disabled
 
-      final bytes = await picked.readAsBytes();
-
-      // show simple loading indicator
-      if (mounted) setState(() => _loading = true);
-
-      await ApiService().uploadAvatar(bytes, picked.name);
-
-      if (mounted) {
-        await _load();
-        showSnack(context, 'Profile picture updated!', ok: true);
-      }
-    } catch (e) {
-      if (mounted) showSnack(context, 'Failed to upload: $e', err: true);
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+  String? get _profilePicUrl {
+    final pic = (_user?['profilePicUrl'] ?? _user?['avatarUrl'])?.toString();
+    return (pic != null && pic.isNotEmpty) ? pic : null;
   }
 
   Future<void> _load() async {
@@ -251,7 +229,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Column(
                       children: [
                         GestureDetector(
-                          onTap: _isOwnProfile ? _changeAvatar : null,
+                          onTap: null,
                           child: Stack(
                             alignment: Alignment.bottomRight,
                             children: [
@@ -272,11 +250,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                                 child: ClipOval(
                                   child: Center(
-                                    child: _user != null &&
-                                            (_user?['avatarUrl'] as String?)
-                                                    ?.isNotEmpty ==
-                                                true
-                                        ? Image.network(_user!['avatarUrl'],
+                                    child: _profilePicUrl != null
+                                        ? Image.network(_profilePicUrl!,
                                             fit: BoxFit.cover)
                                         : Text(
                                             initial,

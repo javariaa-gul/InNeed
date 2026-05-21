@@ -90,17 +90,23 @@ export class UsersService {
   }
 
   async update(id: number, dto: UpdateUserDto): Promise<User> {
-    if (dto.fullName) dto.fullName = this.sanitize(dto.fullName);
-    if (dto.phoneNumber) dto.phoneNumber = this.sanitize(dto.phoneNumber);
+    const payload: any = { ...dto };
+    // Avatar/profile picture updates are disabled; ignore avatarUrl if provided
+    if (payload.avatarUrl) {
+      delete payload.avatarUrl;
+    }
 
-    if (dto.phoneNumber) {
-      const existing = await this.repo.findOne({ where: { phoneNumber: dto.phoneNumber } });
+    if (payload.fullName) payload.fullName = this.sanitize(payload.fullName);
+    if (payload.phoneNumber) payload.phoneNumber = this.sanitize(payload.phoneNumber);
+
+    if (payload.phoneNumber) {
+      const existing = await this.repo.findOne({ where: { phoneNumber: payload.phoneNumber } });
       if (existing && existing.id !== id) {
         throw new ConflictException('Phone number already registered.');
       }
     }
 
-    await this.repo.update(id, dto);
+    await this.repo.update(id, payload);
     return this.findOne(id);
   }
 

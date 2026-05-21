@@ -9,14 +9,13 @@ import { ReviewsController } from './reviews.controller.js';
 import { BlockchainService } from './blockchain.service.js';
 import { BlockchainController } from './blockchain.controller.js';
 import { AuthModule } from '../auth/auth.module.js';
-import { CloudinaryService } from '../cloudinary/cloudinary.service.js';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Review, ReviewHash, Job, User]),
     AuthModule,
   ],
-  providers: [ReviewsService, BlockchainService, CloudinaryService],
+  providers: [ReviewsService, BlockchainService],
   controllers: [ReviewsController, BlockchainController],
   exports: [ReviewsService],
 })

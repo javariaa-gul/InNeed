@@ -19,7 +19,6 @@ import { memoryStorage } from 'multer';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from './users.service';
-import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -30,10 +29,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 export class UsersController {
   private readonly logger = new Logger(UsersController.name);
 
-  constructor(
-    private readonly usersService: UsersService,
-    private readonly cloudinaryService: CloudinaryService,
-  ) {}
+  constructor(private readonly usersService: UsersService) {}
 
   // ─────────────────────────────────────────────────────────────────
   // PUBLIC ENDPOINTS
@@ -114,60 +110,7 @@ export class UsersController {
     return result;
   }
 
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @Post('me/avatar')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
-  @ApiOperation({ summary: 'Upload/change profile avatar' })
-  async uploadAvatar(@Request() req: any, @UploadedFile() file: Express.Multer.File) {
-    try {
-      this.logger.log(`[Upload Avatar] userId=${req.user.userId}, file=${file?.originalname}`);
-
-      if (!file) {
-        throw new BadRequestException('Image file is required');
-      }
-
-      // Validate file type
-      const isImageMime = file.mimetype?.startsWith('image/');
-      const isImageName = /\.(jpg|jpeg|png|gif|webp|bmp|heic|heif)$/i.test(
-        file.originalname ?? '',
-      );
-      if (!isImageMime && !isImageName) {
-        throw new BadRequestException('File must be an image');
-      }
-
-      // Validate file size (5MB max)
-      const MAX_FILE_SIZE = 5 * 1024 * 1024;
-      if (file.size > MAX_FILE_SIZE) {
-        throw new BadRequestException('Image size exceeds 5MB limit');
-      }
-
-      // Upload to Cloudinary
-      this.logger.log(`[Upload Avatar] Uploading image to Cloudinary (${file.size} bytes)`);
-
-      const url = await this.cloudinaryService.uploadImage(file, 'apka-hunar/avatars');
-
-      this.logger.log(`[Upload Avatar] Cloud URL: ${url}`);
-
-      // Update user avatar in database
-      await this.usersService.update(req.user.userId, { avatarUrl: url } as any);
-
-      const user = await this.usersService.findOne(req.user.userId);
-      const { password, ...result } = user as any;
-
-      this.logger.log(`[Upload Avatar] Avatar updated successfully for userId=${req.user.userId}`);
-
-      return {
-        success: true,
-        message: 'Avatar uploaded successfully',
-        avatarUrl: url,
-        user: result,
-      };
-    } catch (error) {
-      this.logger.error('[Upload Avatar] Error:', error);
-      throw error;
-    }
-  }
+  // Avatar upload endpoint removed: profile picture changes disabled
 
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

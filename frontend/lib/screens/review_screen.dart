@@ -76,10 +76,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
       showSnack(context, 'Please give an overall rating', err: true);
       return;
     }
-    if (_beforeImageBytes == null || _afterImageBytes == null) {
-      showSnack(context, 'Please add both before and after images', err: true);
-      return;
-    }
+    // Images are optional now; proceed even if not provided
     setState(() => _loading = true);
     try {
       await _api.submitReview(
@@ -91,8 +88,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
         comment: _commentCtrl.text.trim().isNotEmpty
             ? _commentCtrl.text.trim()
             : null,
-        beforeImageBytes: _beforeImageBytes!,
-        afterImageBytes: _afterImageBytes!,
+        beforeImageBytes:
+            _beforeImageBytes != null ? _beforeImageBytes!.toList() : null,
+        afterImageBytes:
+            _afterImageBytes != null ? _afterImageBytes!.toList() : null,
       );
       if (mounted) {
         showSnack(context, 'Review submitted! Thank you.', ok: true);

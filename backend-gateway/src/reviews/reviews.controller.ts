@@ -17,17 +17,14 @@ import { memoryStorage } from 'multer';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { ReviewsService, CreateReviewDto } from './reviews.service.js';
-import { CloudinaryService } from '../cloudinary/cloudinary.service.js';
+// Cloudinary removed: image uploads disabled
 
 @ApiTags('reviews')
 @Controller('reviews')
 export class ReviewsController {
   private readonly logger = new Logger(ReviewsController.name);
 
-  constructor(
-    private readonly reviewsService: ReviewsService,
-    private readonly cloudinaryService: CloudinaryService,
-  ) {}
+  constructor(private readonly reviewsService: ReviewsService) {}
 
   /**
    * Submit a new review with before/after images
@@ -58,75 +55,20 @@ export class ReviewsController {
     try {
       this.logger.log(`[Submit Review] Incoming request from userId=${req.user.userId}, jobId=${dto.jobId}`);
 
-      // Validate files
+      // Image uploads are disabled. Reviews can be submitted without images.
+      // Any uploaded files will be ignored.
       const beforeFile = files?.beforeImage?.[0];
       const afterFile = files?.afterImage?.[0];
 
-      if (!beforeFile) {
-        throw new BadRequestException('Before image is required');
+      if (beforeFile || afterFile) {
+        this.logger.log('[Submit Review] Received image files but image upload is disabled; ignoring files.');
       }
 
-      if (!afterFile) {
-        throw new BadRequestException('After image is required');
-      }
-
-      // Validate file types and sizes
-      const beforeIsImageMime = beforeFile.mimetype?.startsWith('image/');
-      const beforeIsImageName = /\.(jpg|jpeg|png|gif|webp|bmp|heic|heif)$/i.test(
-        beforeFile.originalname ?? '',
-      );
-      if (!beforeIsImageMime && !beforeIsImageName) {
-        throw new BadRequestException('Before file must be an image');
-      }
-
-      const afterIsImageMime = afterFile.mimetype?.startsWith('image/');
-      const afterIsImageName = /\.(jpg|jpeg|png|gif|webp|bmp|heic|heif)$/i.test(
-        afterFile.originalname ?? '',
-      );
-      if (!afterIsImageMime && !afterIsImageName) {
-        throw new BadRequestException('After file must be an image');
-      }
-
-      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-
-      if (beforeFile.size > MAX_FILE_SIZE) {
-        throw new BadRequestException('Before image size exceeds 5MB limit');
-      }
-
-      if (afterFile.size > MAX_FILE_SIZE) {
-        throw new BadRequestException('After image size exceeds 5MB limit');
-      }
-
-      this.logger.log(
-        `[Submit Review] Uploading images: before=${beforeFile.originalname} (${beforeFile.size}B), ` +
-        `after=${afterFile.originalname} (${afterFile.size}B)`,
-      );
-
-      // Upload both images to Cloudinary in parallel
-      let beforeImageUrl: string;
-      let afterImageUrl: string;
-
-      try {
-        [beforeImageUrl, afterImageUrl] = await Promise.all([
-          this.cloudinaryService.uploadImage(beforeFile, 'apka-hunar/reviews'),
-          this.cloudinaryService.uploadImage(afterFile, 'apka-hunar/reviews'),
-        ]);
-
-        this.logger.log(
-          `[Submit Review] Images uploaded successfully\n  Before: ${beforeImageUrl}\n  After: ${afterImageUrl}`,
-        );
-      } catch (uploadError) {
-        this.logger.error('[Submit Review] Image upload failed', uploadError);
-        throw new BadRequestException(`Image upload failed: ${uploadError.message}`);
-      }
+      const beforeImageUrl = undefined;
+      const afterImageUrl = undefined;
 
       // Submit review with blockchain
-      const review = await this.reviewsService.submitReview(
-        req.user.userId,
-        dto,
-        beforeImageUrl,
-        afterImageUrl,
-      );
+      const review = await this.reviewsService.submitReview(req.user.userId, dto, beforeImageUrl, afterImageUrl);
 
       this.logger.log(
         `[Submit Review] Review ${review.id} submitted successfully with blockchain hash`,

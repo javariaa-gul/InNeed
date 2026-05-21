@@ -1,6 +1,9 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+
 import '../config/app_config.dart';
 import 'storage_service.dart';
 
@@ -13,8 +16,10 @@ class ApiService {
   Future<Map<String, String>> _headers({bool auth = true}) async {
     final h = <String, String>{'Content-Type': 'application/json'};
     if (auth) {
-      final t = await StorageService.getToken();
-      if (t != null && t.isNotEmpty) h['Authorization'] = 'Bearer $t';
+      final token = await StorageService.getToken();
+      if (token != null && token.isNotEmpty) {
+        h['Authorization'] = 'Bearer $token';
+      }
     }
     return h;
   }
@@ -35,13 +40,34 @@ class ApiService {
     return jsonDecode(res.body);
   }
 
-  /// Debug helper to log API configuration
+  MediaType? _guessMediaType(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg'))
+      return MediaType('image', 'jpeg');
+    if (lower.endsWith('.png')) return MediaType('image', 'png');
+    if (lower.endsWith('.webp')) return MediaType('image', 'webp');
+    if (lower.endsWith('.gif')) return MediaType('image', 'gif');
+    if (lower.endsWith('.bmp')) return MediaType('image', 'bmp');
+    if (lower.endsWith('.heic')) return MediaType('image', 'heic');
+    if (lower.endsWith('.heif')) return MediaType('image', 'heif');
+    return null;
+  }
+
   void _logApiDebug(String message) {
     final config = appConfig.toMap();
     debugPrint('🔵 API Debug: $message | Config: $config');
   }
 
-  // ─── AUTH ─────────────────────────────────────────────────────────────────
+  Future<void> _saveAuth(Map<String, dynamic> data) async {
+    await StorageService.saveAuthData(
+      token: data['access_token']?.toString() ?? '',
+      userId: data['user']?['id']?.toString() ?? '',
+      role: data['user']?['activeRole']?.toString() ?? 'worker',
+      user: data['user'] as Map<String, dynamic>?,
+    );
+  }
+
+  // AUTH
   Future<Map<String, dynamic>> signup({
     required String fullName,
     required String phoneNumber,
@@ -98,16 +124,7 @@ class ApiService {
     return data;
   }
 
-  Future<void> _saveAuth(Map<String, dynamic> data) async {
-    await StorageService.saveAuthData(
-      token: data['access_token']?.toString() ?? '',
-      userId: data['user']?['id']?.toString() ?? '',
-      role: data['user']?['activeRole']?.toString() ?? 'worker',
-      user: data['user'] as Map<String, dynamic>?,
-    );
-  }
-
-  // ─── PROFILE ──────────────────────────────────────────────────────────────
+  // PROFILE
   Future<Map<String, dynamic>> getMe() async {
     final res = await http
         .get(Uri.parse(appConfig.endpoint('/users/me')),
@@ -127,19 +144,9 @@ class ApiService {
     return _parse(res) as Map<String, dynamic>;
   }
 
+  // Avatar upload disabled — no-op returning empty URL
   Future<String> uploadAvatar(List<int> bytes, String filename) async {
-    final uri = Uri.parse(appConfig.endpoint('/users/me/avatar'));
-    final req = http.MultipartRequest('POST', uri);
-    final headers = await _headers();
-    req.headers.addAll(headers);
-    req.headers.remove('Content-Type'); // Let http set it for multipart
-    req.files
-        .add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
-
-    final streamed = await req.send().timeout(const Duration(seconds: 30));
-    final res = await http.Response.fromStream(streamed);
-    final data = _parse(res) as Map<String, dynamic>;
-    return data['avatarUrl']?.toString() ?? '';
+    return '';
   }
 
   Future<Map<String, dynamic>> getUser(int id) async {
@@ -152,10 +159,8 @@ class ApiService {
 
   Future<Map<String, dynamic>> switchRole() async {
     final res = await http
-        .post(
-          Uri.parse(appConfig.endpoint('/users/switch-role')),
-          headers: await _headers(),
-        )
+        .post(Uri.parse(appConfig.endpoint('/users/switch-role')),
+            headers: await _headers())
         .timeout(const Duration(seconds: 15));
     final data = _parse(res) as Map<String, dynamic>;
     if (data['token'] != null) {
@@ -177,14 +182,14 @@ class ApiService {
             body: jsonEncode({'lat': lat, 'lon': lon}),
           )
           .timeout(const Duration(seconds: 8));
+
       await http
           .post(
             Uri.parse(appConfig.aiEndpoint('/location')),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
-              'user_id': int.tryParse(
-                (await StorageService.getUserId()) ?? '0',
-              ),
+              'user_id':
+                  int.tryParse((await StorageService.getUserId()) ?? '0'),
               'lat': lat,
               'lon': lon,
             }),
@@ -196,12 +201,9 @@ class ApiService {
   Future<void> markTutorialSeen() async {
     try {
       final res = await http
-          .post(
-            Uri.parse(appConfig.endpoint('/users/tutorial-seen')),
-            headers: await _headers(),
-          )
+          .post(Uri.parse(appConfig.endpoint('/users/tutorial-seen')),
+              headers: await _headers())
           .timeout(const Duration(seconds: 8));
-
       if (res.statusCode != 200) {
         throw Exception('Failed to mark tutorial as seen: ${res.statusCode}');
       }
@@ -211,14 +213,11 @@ class ApiService {
     }
   }
 
-  // ─── JOBS ─────────────────────────────────────────────────────────────────
+  // JOBS
   Future<Map<String, dynamic>> createJob(Map<String, dynamic> data) async {
     final res = await http
-        .post(
-          Uri.parse(appConfig.endpoint('/jobs')),
-          headers: await _headers(),
-          body: jsonEncode(data),
-        )
+        .post(Uri.parse(appConfig.endpoint('/jobs')),
+            headers: await _headers(), body: jsonEncode(data))
         .timeout(const Duration(seconds: 15));
     return _parse(res) as Map<String, dynamic>;
   }
@@ -228,26 +227,22 @@ class ApiService {
         .get(Uri.parse(appConfig.endpoint('/jobs/mine')),
             headers: await _headers())
         .timeout(const Duration(seconds: 15));
-    return _parse(res) as List<dynamic>;
+    final parsed = _parse(res);
+    return parsed is List ? parsed : const [];
   }
 
-    import 'package:http_parser/http_parser.dart';
   Future<List<dynamic>> getJobFeed() async {
     final res = await http
         .get(Uri.parse(appConfig.endpoint('/jobs/feed')),
             headers: await _headers())
         .timeout(const Duration(seconds: 15));
-    return _parse(res) as List<dynamic>;
+    final parsed = _parse(res);
+    return parsed is List ? parsed : const [];
   }
 
   Future<Map<String, dynamic>?> getActiveJob() async {
     final res = await http
-            .add(http.MultipartFile.fromBytes(
-          'file',
-          bytes,
-          filename: filename,
-          contentType: _guessMediaType(filename),
-        ));
+        .get(Uri.parse(appConfig.endpoint('/jobs/active')),
             headers: await _headers())
         .timeout(const Duration(seconds: 15));
     if (res.statusCode == 404 || res.body == 'null') return null;
@@ -257,31 +252,6 @@ class ApiService {
   Future<Map<String, dynamic>> getJob(int id) async {
     final res = await http
         .get(Uri.parse(appConfig.endpoint('/jobs/$id')),
-      MediaType? _guessMediaType(String filename) {
-        final lower = filename.toLowerCase();
-        if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
-          return MediaType('image', 'jpeg');
-        }
-        if (lower.endsWith('.png')) {
-          return MediaType('image', 'png');
-        }
-        if (lower.endsWith('.webp')) {
-          return MediaType('image', 'webp');
-        }
-        if (lower.endsWith('.gif')) {
-          return MediaType('image', 'gif');
-        }
-        if (lower.endsWith('.bmp')) {
-          return MediaType('image', 'bmp');
-        }
-        if (lower.endsWith('.heic')) {
-          return MediaType('image', 'heic');
-        }
-        if (lower.endsWith('.heif')) {
-          return MediaType('image', 'heif');
-        }
-        return null;
-      }
             headers: await _headers())
         .timeout(const Duration(seconds: 15));
     return _parse(res) as Map<String, dynamic>;
@@ -289,18 +259,11 @@ class ApiService {
 
   Future<List<dynamic>> getBidsForJob(int jobId) async {
     final res = await http
-        .get(
-        final parsed = _parse(res);
-        if (parsed is List) return parsed;
-        if (parsed is Map<String, dynamic>) {
-          final reviews = parsed['reviews'];
-          if (reviews is List) return reviews;
-        }
-        return const [];
-          headers: await _headers(),
-        )
+        .get(Uri.parse(appConfig.endpoint('/jobs/$jobId/bids')),
+            headers: await _headers())
         .timeout(const Duration(seconds: 15));
-    return _parse(res) as List<dynamic>;
+    final parsed = _parse(res);
+    return parsed is List ? parsed : const [];
   }
 
   Future<Map<String, dynamic>> placeBid(
@@ -312,10 +275,8 @@ class ApiService {
         .post(
           Uri.parse(appConfig.endpoint('/jobs/$jobId/bids')),
           headers: await _headers(),
-          body: jsonEncode({
-            'offeredPrice': price,
-            if (message != null) 'message': message,
-          }),
+          body: jsonEncode(
+              {'offeredPrice': price, if (message != null) 'message': message}),
         )
         .timeout(const Duration(seconds: 15));
     return _parse(res) as Map<String, dynamic>;
@@ -323,88 +284,67 @@ class ApiService {
 
   Future<void> rejectJob(int jobId) async {
     final res = await http
-        .post(
-          Uri.parse(appConfig.endpoint('/jobs/$jobId/reject')),
-          headers: await _headers(),
-        )
+        .post(Uri.parse(appConfig.endpoint('/jobs/$jobId/reject')),
+            headers: await _headers())
         .timeout(const Duration(seconds: 15));
     _parse(res);
   }
 
   Future<Map<String, dynamic>> acceptBid(int jobId, int bidId) async {
     final res = await http
-        .post(
-          Uri.parse(appConfig.endpoint('/jobs/$jobId/bids/$bidId/accept')),
-          headers: await _headers(),
-        )
+        .post(Uri.parse(appConfig.endpoint('/jobs/$jobId/bids/$bidId/accept')),
+            headers: await _headers())
         .timeout(const Duration(seconds: 15));
     return _parse(res) as Map<String, dynamic>;
   }
 
-  // ============================================================
-  // NEW METHODS FOR COUNTER-OFFER
-  // ============================================================
-
-  // Poster accepts counter-offer from seeker
   Future<Map<String, dynamic>> acceptCounterBid(int jobId, int bidId) async {
     final res = await http
         .post(
-          Uri.parse(
-              appConfig.endpoint('/jobs/$jobId/bids/$bidId/counter/accept')),
-          headers: await _headers(),
-        )
+            Uri.parse(
+                appConfig.endpoint('/jobs/$jobId/bids/$bidId/counter/accept')),
+            headers: await _headers())
         .timeout(const Duration(seconds: 15));
     return _parse(res) as Map<String, dynamic>;
   }
 
-  // Poster rejects counter-offer from seeker
   Future<void> rejectCounterBid(int jobId, int bidId) async {
     final res = await http
         .post(
-          Uri.parse(
-              appConfig.endpoint('/jobs/$jobId/bids/$bidId/counter/reject')),
-          headers: await _headers(),
-        )
+            Uri.parse(
+                appConfig.endpoint('/jobs/$jobId/bids/$bidId/counter/reject')),
+            headers: await _headers())
         .timeout(const Duration(seconds: 15));
     _parse(res);
   }
 
-  // ============================================================
-  // END OF NEW METHODS
-  // ============================================================
-
   Future<void> completeJob(int jobId) async {
     final res = await http
-        .post(
-          Uri.parse(appConfig.endpoint('/jobs/$jobId/complete')),
-          headers: await _headers(),
-        )
+        .post(Uri.parse(appConfig.endpoint('/jobs/$jobId/complete')),
+            headers: await _headers())
         .timeout(const Duration(seconds: 15));
     _parse(res);
   }
 
   Future<void> relistJob(int jobId) async {
     final res = await http
-        .post(
-          Uri.parse(appConfig.endpoint('/jobs/$jobId/relist')),
-          headers: await _headers(),
-        )
+        .post(Uri.parse(appConfig.endpoint('/jobs/$jobId/relist')),
+            headers: await _headers())
         .timeout(const Duration(seconds: 15));
     _parse(res);
   }
 
-  // ─── CHAT ─────────────────────────────────────────────────────────────────
+  // CHAT
   Future<List<dynamic>> getChatMessages(int jobId) async {
     final res = await http
-        .get(
-          Uri.parse(appConfig.endpoint('/chat/$jobId/messages')),
-          headers: await _headers(),
-        )
+        .get(Uri.parse(appConfig.endpoint('/chat/$jobId/messages')),
+            headers: await _headers())
         .timeout(const Duration(seconds: 15));
-    return _parse(res) as List<dynamic>;
+    final parsed = _parse(res);
+    return parsed is List ? parsed : const [];
   }
 
-  // ─── REVIEWS ──────────────────────────────────────────────────────────────
+  // REVIEWS
   Future<Map<String, dynamic>> submitReview({
     required int jobId,
     required int overallRating,
@@ -412,48 +352,41 @@ class ApiService {
     int? behaviorRating,
     int? smoothnessRating,
     String? comment,
-    required List<int> beforeImageBytes,
-    required List<int> afterImageBytes,
+    List<int>? beforeImageBytes,
+    List<int>? afterImageBytes,
   }) async {
-    // Send as multipart form data to match backend expectation
     final request = http.MultipartRequest(
-      'POST',
-      Uri.parse(appConfig.endpoint('/reviews')),
-    );
-
+        'POST', Uri.parse(appConfig.endpoint('/reviews')));
     request.headers.addAll(await _headers());
-    request.headers.remove('Content-Type'); // Let dio set it for multipart
+    request.headers.remove('Content-Type');
 
-    // Add text fields
     request.fields['jobId'] = jobId.toString();
     request.fields['overallRating'] = overallRating.toString();
-    if (workQualityRating != null) {
+    if (workQualityRating != null)
       request.fields['workQualityRating'] = workQualityRating.toString();
-    }
-    if (behaviorRating != null) {
+    if (behaviorRating != null)
       request.fields['behaviorRating'] = behaviorRating.toString();
-    }
-    if (smoothnessRating != null) {
+    if (smoothnessRating != null)
       request.fields['smoothnessRating'] = smoothnessRating.toString();
-    }
-    if (comment != null && comment.trim().isNotEmpty) {
+    if (comment != null && comment.trim().isNotEmpty)
       request.fields['comment'] = comment.trim();
-    }
 
-    request.files.add(
-      http.MultipartFile.fromBytes(
+    if (beforeImageBytes != null && beforeImageBytes.isNotEmpty) {
+      request.files.add(http.MultipartFile.fromBytes(
         'beforeImage',
         beforeImageBytes,
         filename: 'review_before.jpg',
-      ),
-    );
-    request.files.add(
-      http.MultipartFile.fromBytes(
+        contentType: MediaType('image', 'jpeg'),
+      ));
+    }
+    if (afterImageBytes != null && afterImageBytes.isNotEmpty) {
+      request.files.add(http.MultipartFile.fromBytes(
         'afterImage',
         afterImageBytes,
         filename: 'review_after.jpg',
-      ),
-    );
+        contentType: MediaType('image', 'jpeg'),
+      ));
+    }
 
     final streamed = await request.send().timeout(const Duration(seconds: 30));
     final response = await http.Response.fromStream(streamed);
@@ -462,35 +395,35 @@ class ApiService {
 
   Future<bool> hasReviewed(int jobId) async {
     final res = await http
-        .get(
-          Uri.parse(appConfig.endpoint('/reviews/check/$jobId')),
-          headers: await _headers(),
-        )
+        .get(Uri.parse(appConfig.endpoint('/reviews/check/$jobId')),
+            headers: await _headers())
         .timeout(const Duration(seconds: 15));
     return _parse(res) == true;
   }
 
   Future<List<dynamic>> getUserReviews(int userId) async {
     final res = await http
-        .get(
-          Uri.parse(appConfig.endpoint('/reviews/user/$userId')),
-          headers: await _headers(),
-        )
+        .get(Uri.parse(appConfig.endpoint('/reviews/user/$userId')),
+            headers: await _headers())
         .timeout(const Duration(seconds: 15));
-    return _parse(res) as List<dynamic>;
+    final parsed = _parse(res);
+    if (parsed is List) return parsed;
+    if (parsed is Map<String, dynamic>) {
+      final reviews = parsed['reviews'];
+      if (reviews is List) return reviews;
+    }
+    return const [];
   }
 
   Future<Map<String, dynamic>> verifyReview(int reviewId) async {
     final res = await http
-        .get(
-          Uri.parse(appConfig.endpoint('/reviews/verify/$reviewId')),
-          headers: await _headers(),
-        )
+        .get(Uri.parse(appConfig.endpoint('/reviews/verify/$reviewId')),
+            headers: await _headers())
         .timeout(const Duration(seconds: 15));
     return _parse(res) as Map<String, dynamic>;
   }
 
-  // ─── JOB STATUS / ACTIVITY ────────────────────────────────────────────────
+  // JOB STATUS / ACTIVITY
   Future<Map<String, dynamic>> updateJobStatus(int jobId, String status) async {
     final res = await http
         .patch(
@@ -505,22 +438,22 @@ class ApiService {
   Future<Map<String, dynamic>> uploadImage(
       List<int> bytes, String filename) async {
     final request = http.MultipartRequest(
-      'POST',
-      Uri.parse(appConfig.endpoint('/jobs/upload-image')),
-    );
+        'POST', Uri.parse(appConfig.endpoint('/jobs/upload-image')));
     request.headers.addAll(await _headers());
-    request.headers.remove('Content-Type'); // Let http set it for multipart
+    request.headers.remove('Content-Type');
     request.files.add(http.MultipartFile.fromBytes(
       'file',
       bytes,
       filename: filename,
+      contentType: _guessMediaType(filename),
     ));
+
     final streamed = await request.send().timeout(const Duration(seconds: 30));
     final response = await http.Response.fromStream(streamed);
     return _parse(response) as Map<String, dynamic>;
   }
 
-  // ─── AI MATCHING ──────────────────────────────────────────────────────────
+  // AI MATCHING
   Future<Map<String, dynamic>> matchWorkers({
     required String skill,
     required double lat,

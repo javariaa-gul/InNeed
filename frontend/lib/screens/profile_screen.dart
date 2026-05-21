@@ -86,12 +86,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() => _loading = true);
       final uid = widget.userId;
       final user = uid == null ? await _api.getMe() : await _api.getUser(uid);
-      final reviews = await _api.getUserReviews(user['id'] as int);
       if (mounted) {
         setState(() {
           _user = user;
-          _reviews = reviews;
         });
+      }
+
+      final userId = (user['id'] as num?)?.toInt();
+      if (userId != null) {
+        final reviews = await _api.getUserReviews(userId);
+        if (mounted) {
+          setState(() {
+            _reviews = reviews;
+          });
+        }
       }
     } catch (e) {
       if (mounted) showSnack(context, e.toString(), err: true);

@@ -128,7 +128,11 @@ export class UsersController {
       }
 
       // Validate file type
-      if (!file.mimetype.startsWith('image/')) {
+      const isImageMime = file.mimetype?.startsWith('image/');
+      const isImageName = /\.(jpg|jpeg|png|gif|webp|bmp|heic|heif)$/i.test(
+        file.originalname ?? '',
+      );
+      if (!isImageMime && !isImageName) {
         throw new BadRequestException('File must be an image');
       }
 

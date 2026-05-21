@@ -231,6 +231,7 @@ class ApiService {
     return _parse(res) as List<dynamic>;
   }
 
+    import 'package:http_parser/http_parser.dart';
   Future<List<dynamic>> getJobFeed() async {
     final res = await http
         .get(Uri.parse(appConfig.endpoint('/jobs/feed')),
@@ -241,7 +242,12 @@ class ApiService {
 
   Future<Map<String, dynamic>?> getActiveJob() async {
     final res = await http
-        .get(Uri.parse(appConfig.endpoint('/jobs/active')),
+            .add(http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: filename,
+          contentType: _guessMediaType(filename),
+        ));
             headers: await _headers())
         .timeout(const Duration(seconds: 15));
     if (res.statusCode == 404 || res.body == 'null') return null;
@@ -251,6 +257,31 @@ class ApiService {
   Future<Map<String, dynamic>> getJob(int id) async {
     final res = await http
         .get(Uri.parse(appConfig.endpoint('/jobs/$id')),
+      MediaType? _guessMediaType(String filename) {
+        final lower = filename.toLowerCase();
+        if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+          return MediaType('image', 'jpeg');
+        }
+        if (lower.endsWith('.png')) {
+          return MediaType('image', 'png');
+        }
+        if (lower.endsWith('.webp')) {
+          return MediaType('image', 'webp');
+        }
+        if (lower.endsWith('.gif')) {
+          return MediaType('image', 'gif');
+        }
+        if (lower.endsWith('.bmp')) {
+          return MediaType('image', 'bmp');
+        }
+        if (lower.endsWith('.heic')) {
+          return MediaType('image', 'heic');
+        }
+        if (lower.endsWith('.heif')) {
+          return MediaType('image', 'heif');
+        }
+        return null;
+      }
             headers: await _headers())
         .timeout(const Duration(seconds: 15));
     return _parse(res) as Map<String, dynamic>;
@@ -259,7 +290,13 @@ class ApiService {
   Future<List<dynamic>> getBidsForJob(int jobId) async {
     final res = await http
         .get(
-          Uri.parse(appConfig.endpoint('/jobs/$jobId/bids')),
+        final parsed = _parse(res);
+        if (parsed is List) return parsed;
+        if (parsed is Map<String, dynamic>) {
+          final reviews = parsed['reviews'];
+          if (reviews is List) return reviews;
+        }
+        return const [];
           headers: await _headers(),
         )
         .timeout(const Duration(seconds: 15));

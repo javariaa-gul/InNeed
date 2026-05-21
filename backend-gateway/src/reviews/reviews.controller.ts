@@ -71,11 +71,19 @@ export class ReviewsController {
       }
 
       // Validate file types and sizes
-      if (!beforeFile.mimetype.startsWith('image/')) {
+      const beforeIsImageMime = beforeFile.mimetype?.startsWith('image/');
+      const beforeIsImageName = /\.(jpg|jpeg|png|gif|webp|bmp|heic|heif)$/i.test(
+        beforeFile.originalname ?? '',
+      );
+      if (!beforeIsImageMime && !beforeIsImageName) {
         throw new BadRequestException('Before file must be an image');
       }
 
-      if (!afterFile.mimetype.startsWith('image/')) {
+      const afterIsImageMime = afterFile.mimetype?.startsWith('image/');
+      const afterIsImageName = /\.(jpg|jpeg|png|gif|webp|bmp|heic|heif)$/i.test(
+        afterFile.originalname ?? '',
+      );
+      if (!afterIsImageMime && !afterIsImageName) {
         throw new BadRequestException('After file must be an image');
       }
 

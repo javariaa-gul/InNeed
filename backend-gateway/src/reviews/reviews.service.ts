@@ -105,8 +105,6 @@ export class ReviewsService {
         reviewerId,
         revieweeId,
         revieweeRole,
-        beforeImageUrl?: string,
-        afterImageUrl?: string,
         behaviorRating: dto.behaviorRating ? Number(dto.behaviorRating) : undefined,
         smoothnessRating: dto.smoothnessRating ? Number(dto.smoothnessRating) : undefined,
         comment: dto.comment?.trim() || undefined,
@@ -121,7 +119,8 @@ export class ReviewsService {
 
       // ╔════════════════════════════════════════════════════════════════════╗
       // ║  BLOCKCHAIN: Create immutable record                             ║
-          // Images are optional now; allow reviews without images
+      // Images are optional now; allow reviews without images
+      try {
         const previousHashRecord = await this.hashRepo.findOne({
           order: { id: 'DESC' },
         });

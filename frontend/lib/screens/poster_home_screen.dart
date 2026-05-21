@@ -299,12 +299,24 @@ class _PosterHomeScreenState extends State<PosterHomeScreen> {
     return _SwipeableJobCard(
       onSwipeRight: () {
         // Right swipe: Accept and open bids
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => BidsScreen(jobId: job['id'] as int),
-          ),
-        ).then((_) => _loadData());
+        debugPrint('[PostCard] Swipe right triggered for job ${job['id']}');
+        try {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => BidsScreen(jobId: job['id'] as int),
+            ),
+          ).then((_) {
+            debugPrint('[PostCard] Returned from BidsScreen, reloading data');
+            _loadData();
+          }).catchError((e) {
+            debugPrint('[PostCard] Navigation error: $e');
+            showSnack(context, 'Error opening bids: $e', err: true);
+          });
+        } catch (e) {
+          debugPrint('[PostCard] Exception navigating to BidsScreen: $e');
+          showSnack(context, 'Error: $e', err: true);
+        }
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
@@ -735,8 +747,13 @@ class _SwipeableJobCardState extends State<_SwipeableJobCard>
     final screenWidth = MediaQuery.of(context).size.width;
     const swipeThreshold = 0.15; // 15% of screen width
 
+    debugPrint(
+        '[Swipe] Drag offset: $_dragOffset, Threshold: ${screenWidth * swipeThreshold}, Screen width: $screenWidth');
+
     if (_dragOffset > screenWidth * swipeThreshold) {
       // Swiped right
+      debugPrint(
+          '[Swipe] Right swipe detected! Calling onSwipeRight callback.');
       widget.onSwipeRight();
       // Animate off screen
       _animationController.forward(from: 0).then((_) {
@@ -750,6 +767,7 @@ class _SwipeableJobCardState extends State<_SwipeableJobCard>
       });
     } else {
       // Not enough drag, snap back
+      debugPrint('[Swipe] Insufficient drag, snapping back.');
       _animationController.forward(from: 0).then((_) {
         if (mounted) {
           setState(() {

@@ -306,21 +306,6 @@ class _PosterHomeScreenState extends State<PosterHomeScreen> {
           ),
         ).then((_) => _loadData());
       },
-      onSwipeLeft: () {
-        // Left swipe: Skip (do nothing or mark as skipped)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Card skipped ✓'),
-            backgroundColor: kBlack,
-            duration: const Duration(milliseconds: 800),
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        );
-      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
@@ -610,7 +595,7 @@ class _PosterHomeScreenState extends State<PosterHomeScreen> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      '← Swipe to skip  •  Swipe right to view offers →',
+                      'Swipe right to view offers →',
                       style: TextStyle(
                         color: textColor.withValues(alpha: 0.6),
                         fontSize: 11,
@@ -708,12 +693,10 @@ class _PosterHomeScreenState extends State<PosterHomeScreen> {
 class _SwipeableJobCard extends StatefulWidget {
   final Widget child;
   final VoidCallback onSwipeRight;
-  final VoidCallback onSwipeLeft;
 
   const _SwipeableJobCard({
     required this.child,
     required this.onSwipeRight,
-    required this.onSwipeLeft,
   });
 
   @override
@@ -752,14 +735,9 @@ class _SwipeableJobCardState extends State<_SwipeableJobCard>
     final screenWidth = MediaQuery.of(context).size.width;
     const swipeThreshold = 0.15; // 15% of screen width
 
-    if (_dragOffset.abs() > screenWidth * swipeThreshold) {
-      if (_dragOffset > 0) {
-        // Swiped right
-        widget.onSwipeRight();
-      } else {
-        // Swiped left
-        widget.onSwipeLeft();
-      }
+    if (_dragOffset > screenWidth * swipeThreshold) {
+      // Swiped right
+      widget.onSwipeRight();
       // Animate off screen
       _animationController.forward(from: 0).then((_) {
         if (mounted) {
@@ -799,43 +777,25 @@ class _SwipeableJobCardState extends State<_SwipeableJobCard>
               border: Border.all(
                 color: _dragOffset > 0
                     ? const Color(0xFF4CAF50).withValues(alpha: 0.3)
-                    : kRed.withValues(alpha: 0.3),
+                    : Colors.transparent,
                 width: 2,
               ),
             ),
             child: Stack(
               children: [
                 // Background swipe indicator
-                if (_isDragging)
+                if (_isDragging && _dragOffset > 0)
                   Positioned(
                     left: 16,
                     top: 0,
                     bottom: 0,
                     child: Align(
                       alignment: Alignment.centerLeft,
-                      child: _dragOffset > 0
-                          ? const Icon(
-                              Icons.check_rounded,
-                              color: Color(0xFF4CAF50),
-                              size: 40,
-                            )
-                          : null,
-                    ),
-                  ),
-                if (_isDragging)
-                  Positioned(
-                    right: 16,
-                    top: 0,
-                    bottom: 0,
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: _dragOffset < 0
-                          ? const Icon(
-                              Icons.close_rounded,
-                              color: kRed,
-                              size: 40,
-                            )
-                          : null,
+                      child: const Icon(
+                        Icons.check_rounded,
+                        color: Color(0xFF4CAF50),
+                        size: 40,
+                      ),
                     ),
                   ),
                 // Main card

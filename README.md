@@ -100,8 +100,8 @@ cp .env.example .env.development
 docker-compose up -d
 
 # 4. Verify services
-curl https://in-need-production.up.railway.app/api           # Swagger API docs
-curl https://in-need-production.up.railway.app/health        # Health check
+curl https://inneed-production.up.railway.app/api           # Swagger API docs
+curl https://inneed-production.up.railway.app/health        # Health check
 curl http://192.168.1.11:5050               # PgAdmin
 
 # 5. View logs
@@ -112,12 +112,12 @@ docker-compose logs -f gateway
 
 | Service | URL | Purpose |
 |---------|-----|---------|
-| API Gateway | `https://in-need-production.up.railway.app` | REST API & WebSocket |
-| Swagger Docs | `https://in-need-production.up.railway.app/api` | API documentation |
+| API Gateway | `https://inneed-production.up.railway.app` | REST API & WebSocket |
+| Swagger Docs | `https://inneed-production.up.railway.app/api` | API documentation |
 | AI Service | `https://in-need-production-00d5.up.railway.app/docs` | FastAPI docs |
 | Database | `192.168.1.11:5432` | PostgreSQL |
 | PgAdmin | `http://192.168.1.11:5050` | DB management |
-| Blockchain | `https://in-need-production.up.railway.app` | Smart contracts & verification |
+| Blockchain | `https://inneed-production.up.railway.app` | Smart contracts & verification |
 
 ---
 

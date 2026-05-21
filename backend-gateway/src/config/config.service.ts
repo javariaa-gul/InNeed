@@ -104,7 +104,7 @@ export class ConfigService {
     return {
       url:
         process.env.BLOCKCHAIN_SERVICE_URL ||
-        'https://in-need-production.up.railway.app',
+        'https://inneed-production.up.railway.app',
       timeout: 30000,
     };
   }

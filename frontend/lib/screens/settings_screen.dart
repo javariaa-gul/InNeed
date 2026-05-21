@@ -29,12 +29,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final data = await _api.switchRole();
       if (mounted) {
+        final newRole =
+            (data['activeRole'] ?? 'worker').toString().toLowerCase();
         widget.onRefresh();
+
+        // Show success message
         showSnack(
           context,
-          'Switched to ${(data['activeRole'] ?? 'worker').toString().toUpperCase()} mode',
+          'Switched to ${newRole.toUpperCase()} mode',
           ok: true,
         );
+
+        // Wait a moment then redirect to dashboard
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        if (mounted) {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            '/dashboard',
+            (route) => false,
+          );
+        }
       }
     } catch (e) {
       if (mounted) showSnack(context, e.toString(), err: true);

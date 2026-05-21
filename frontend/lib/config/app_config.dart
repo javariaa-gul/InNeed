@@ -5,11 +5,11 @@ import 'package:flutter/foundation.dart';
 
 class AppConfig {
   static const String _defaultBaseUrl =
-      'https://in-need-production.up.railway.app';
+      'https://inneed-production.up.railway.app';
   static const String _defaultAiUrl =
       'https://in-need-production-00d5.up.railway.app';
   static const String _defaultWsUrl =
-      'https://in-need-production.up.railway.app';
+      'https://inneed-production.up.railway.app';
 
   // ─── Singleton Pattern ───────────────────────────────────────────────────
   static final AppConfig _instance = AppConfig._internal();
@@ -21,7 +21,7 @@ class AppConfig {
   // ─── Configuration Properties ────────────────────────────────────────────
   /// Backend API base URL
   /// Set via environment variable: FLUTTER_API_URL
-  /// Default: https://in-need-production.up.railway.app
+  /// Default: https://inneed-production.up.railway.app
   late String _baseUrl = _defaultBaseUrl;
 
   /// AI Service URL
@@ -31,7 +31,7 @@ class AppConfig {
 
   /// WebSocket URL
   /// Set via environment variable: FLUTTER_WS_URL
-  /// Default: https://in-need-production.up.railway.app
+  /// Default: https://inneed-production.up.railway.app
   late String _wsUrl = _defaultWsUrl;
 
   // ─── Public Getters ─────────────────────────────────────────────────────

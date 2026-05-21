@@ -58,8 +58,6 @@ class _BidsScreenState extends State<BidsScreen> {
   bool _loading = true;
   int? _accepting;
 
-  static const Color _yellow = Color(0xFFF9F77E);
-
   @override
   void initState() {
     super.initState();
@@ -130,151 +128,6 @@ class _BidsScreenState extends State<BidsScreen> {
     }
   }
 
-  void _viewProfile(BidModel bid) {
-    final seeker = bid.seeker ?? {};
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: _yellow,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: kBlack, width: 1.3),
-          boxShadow: kShadow,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: kBlack,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: kBlack,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      ((seeker['fullName'] as String?) ?? ' ')[0].toUpperCase(),
-                      style: const TextStyle(
-                        color: kWhite,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        seeker['fullName'] ?? 'Unknown',
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: kBlack,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.star_rounded,
-                            size: 15,
-                            color: Colors.amber.shade600,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${(seeker['workerRating'] ?? 0).toStringAsFixed(1)} (${seeker['workerRatingCount'] ?? 0} reviews)',
-                            style: const TextStyle(color: kBlack, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                      if (seeker['city'] != null)
-                        Text(
-                          '📍 ${seeker['city']}',
-                          style: const TextStyle(color: kBlack, fontSize: 12),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            if ((seeker['skills'] as String?)?.isNotEmpty == true) ...[
-              const SizedBox(height: 16),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Skills',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: kBlack,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: (seeker['skills'] as String)
-                      .split(',')
-                      .map((s) => Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: kBlack,
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Text(
-                              s.trim(),
-                              style: const TextStyle(
-                                color: _yellow,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ))
-                      .toList(),
-                ),
-              ),
-            ],
-            const SizedBox(height: 20),
-            GradBtn(
-              text:
-                  'ACCEPT THIS BID — Rs. ${bid.offeredPrice.toStringAsFixed(0)}',
-              gradient: kValidationGrad,
-              onTap: () {
-                Navigator.pop(context);
-                _accept(bid);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: kBg,
@@ -290,13 +143,41 @@ class _BidsScreenState extends State<BidsScreen> {
         ),
         body: _loading
             ? const Center(child: CircularProgressIndicator(color: kBlack))
-            : Column(
-                children: [
-                  if (_job != null) _jobHeader(),
-                  Expanded(
-                    child: _bids.isEmpty ? _emptyState() : _bidsList(),
-                  ),
-                ],
+            : SingleChildScrollView(
+                child: Column(
+                  children: [
+                    if (_job != null) _jobHeader(),
+                    if (_job != null) _jobDetails(),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Bids (${_bids.length})',
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: kBlack,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (_bids.isEmpty)
+                      _emptyState()
+                    else
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _bids.length,
+                          itemBuilder: (_, i) => _bidCard(_bids[i]),
+                        ),
+                      ),
+                    const SizedBox(height: 40),
+                  ],
+                ),
               ),
       );
 
@@ -304,59 +185,233 @@ class _BidsScreenState extends State<BidsScreen> {
         margin: const EdgeInsets.all(16),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: _yellow,
-          borderRadius: BorderRadius.circular(18),
+          color: kWhite,
+          borderRadius: BorderRadius.circular(20),
           boxShadow: kShadow,
-          border: Border.all(color: kBlack, width: 1.3),
+          border: Border.all(color: const Color(0xFFFEFD99), width: 1.5),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
+            Text(
+              _job!['title'] ?? 'Untitled Job',
+              style: const TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
                 color: kBlack,
-                borderRadius: BorderRadius.circular(14),
               ),
-              child: const Icon(Icons.work_rounded, color: _yellow),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _job!['title'] ?? '',
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEFD99),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'Rs. ${(_job!['price'] as num?)?.toStringAsFixed(0) ?? '0'} ${_job!['pricingType'] == 'hourly' ? '/ hr' : ''}',
                     style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
                       color: kBlack,
                     ),
                   ),
-                  Text(
-                    'Rs. ${(_job!['price'] as num?)?.toStringAsFixed(0) ?? '0'} · ${_job!['pricingType'] ?? 'fixed'}',
-                    style: const TextStyle(color: kBlack, fontSize: 12),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
                   ),
-                ],
-              ),
-            ),
-            buildTag(
-              (_job!['status'] ?? 'open').toString().toUpperCase(),
-              kBlack,
+                  decoration: BoxDecoration(
+                    color: kGreen.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: kGreen.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    (_job!['status'] ?? 'open').toString().toUpperCase(),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                      color: kGreen,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       );
 
-  Widget _bidsList() => RefreshIndicator(
-        onRefresh: _load,
-        color: kBlack,
-        child: ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: _bids.length,
-          itemBuilder: (_, i) => _bidCard(_bids[i]),
-        ),
-      );
+  Widget _jobDetails() {
+    final poster = _job?['poster'] as Map<String, dynamic>? ?? {};
+    final posterName = poster['fullName'] as String? ?? 'Unknown';
+    final posterCity = poster['city'] as String? ?? '';
+    final posterArea = poster['area'] as String? ?? '';
+    final posterLocation =
+        [posterArea, posterCity].where((e) => e.isNotEmpty).join(', ');
+    final posterPic = (poster['profilePicUrl'] as String?)?.isEmpty == false
+        ? poster['profilePicUrl'] as String?
+        : null;
+    final posterRating = (poster['employerRating'] as num?)?.toDouble() ?? 0;
+    final posterRatingCount =
+        (poster['employerRatingCount'] as num?)?.toInt() ?? 0;
+    final description = (_job!['description'] as String?) ??
+        (_job!['details'] as String?) ??
+        'No description provided.';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          // Poster info card
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: kWhite,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFFEFD99), width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: const Color(0xFFFEFD99),
+                  backgroundImage:
+                      posterPic != null ? NetworkImage(posterPic) : null,
+                  child: posterPic == null
+                      ? Text(
+                          posterName[0].toUpperCase(),
+                          style: const TextStyle(
+                            color: kBlack,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        posterName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          color: kBlack,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on_rounded,
+                            size: 12,
+                            color: kGrey,
+                          ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              posterLocation.isNotEmpty
+                                  ? posterLocation
+                                  : 'Location not set',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: kGrey,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.star_rounded,
+                            size: 12,
+                            color: Color(0xFFFFB800),
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            posterRating.toStringAsFixed(1),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 11,
+                              color: kBlack,
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            '($posterRatingCount)',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: kGrey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Job description
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEFD99).withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: const Color(0xFFFEFD99),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Job Details',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    color: kBlack,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  description,
+                  style: const TextStyle(
+                    color: kBlack,
+                    fontSize: 12,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
 
   Widget _bidCard(BidModel bid) {
     final seeker = bid.seeker ?? {};
@@ -369,31 +424,27 @@ class _BidsScreenState extends State<BidsScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: _yellow,
-        borderRadius: BorderRadius.circular(18),
+        color: kWhite,
+        borderRadius: BorderRadius.circular(16),
         boxShadow: kShadow,
-        border: Border.all(color: kBlack, width: 1.3),
+        border: Border.all(color: const Color(0xFFFEFD99), width: 1.3),
       ),
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
             child: Row(
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: kBlack,
-                    shape: BoxShape.circle,
-                  ),
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: const Color(0xFFFEFD99),
                   child: Center(
                     child: Text(
                       initial,
                       style: const TextStyle(
-                        color: _yellow,
+                        color: kBlack,
                         fontWeight: FontWeight.w900,
-                        fontSize: 18,
+                        fontSize: 16,
                       ),
                     ),
                   ),
@@ -409,7 +460,7 @@ class _BidsScreenState extends State<BidsScreen> {
                             name,
                             style: const TextStyle(
                               fontWeight: FontWeight.w800,
-                              fontSize: 14,
+                              fontSize: 13,
                               color: kBlack,
                             ),
                           ),
@@ -421,32 +472,40 @@ class _BidsScreenState extends State<BidsScreen> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: kBlack,
-                                borderRadius: BorderRadius.circular(12),
+                                color: kBlue.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: kBlue.withValues(alpha: 0.3),
+                                ),
                               ),
                               child: const Text(
                                 'COUNTER',
                                 style: TextStyle(
                                   fontSize: 8,
                                   fontWeight: FontWeight.w800,
-                                  color: _yellow,
+                                  color: kBlue,
                                 ),
                               ),
                             ),
                           ],
                         ],
                       ),
+                      const SizedBox(height: 3),
                       Row(
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.star_rounded,
-                            size: 13,
-                            color: kBlack,
+                            size: 12,
+                            color: Color(0xFFFFB800),
                           ),
                           const SizedBox(width: 3),
                           Text(
                             rating.toStringAsFixed(1),
-                            style: const TextStyle(color: kBlack, fontSize: 11),
+                            style: const TextStyle(
+                              color: kBlack,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ],
                       ),
@@ -462,25 +521,29 @@ class _BidsScreenState extends State<BidsScreen> {
                         'Rs. ${bid.previousPrice!.toStringAsFixed(0)}',
                         style: const TextStyle(
                           decoration: TextDecoration.lineThrough,
-                          color: kBlack,
-                          fontSize: 11,
+                          color: kGrey,
+                          fontSize: 10,
                         ),
                       ),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
+                        horizontal: 12,
+                        vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: kBlack,
-                        borderRadius: BorderRadius.circular(20),
+                        color: const Color(0xFFFEFD99),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: const Color(0xFFFEFD99),
+                          width: 1,
+                        ),
                       ),
                       child: Text(
                         'Rs. ${bid.offeredPrice.toStringAsFixed(0)}',
                         style: const TextStyle(
-                          color: _yellow,
+                          color: kBlack,
                           fontWeight: FontWeight.w900,
-                          fontSize: 14,
+                          fontSize: 13,
                         ),
                       ),
                     ),
@@ -491,65 +554,34 @@ class _BidsScreenState extends State<BidsScreen> {
           ),
           if (bid.message?.isNotEmpty == true)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: kWhite,
+                  color: const Color(0xFFFEFD99).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: kBlack.withValues(alpha: 0.55)),
+                  border: Border.all(
+                    color: const Color(0xFFFEFD99).withValues(alpha: 0.5),
+                  ),
                 ),
                 child: Text(
-                  '"${bid.message}"',
+                  bid.message!,
                   style: const TextStyle(
                     color: kBlack,
                     fontSize: 12,
-                    fontStyle: FontStyle.italic,
+                    height: 1.4,
                   ),
                 ),
               ),
             ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-            child: Row(
-              children: [
-                TextButton.icon(
-                  icon: const Icon(Icons.person_search_rounded, size: 16),
-                  label: const Text('View Profile'),
-                  onPressed: () => _viewProfile(bid),
-                  style: TextButton.styleFrom(foregroundColor: kBlack),
-                ),
-                const Spacer(),
-                SizedBox(
-                  height: 36,
-                  child: ElevatedButton(
-                    onPressed: _accepting == bid.id ? null : () => _accept(bid),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: kBlack,
-                      minimumSize: Size.zero,
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: _accepting == bid.id
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              color: _yellow,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : Text(
-                            isCounterOffer ? 'Accept New Price' : 'Accept',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w800, color: _yellow),
-                          ),
-                  ),
-                ),
-              ],
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: GradBtn(
+              text: 'ACCEPT — Rs. ${bid.offeredPrice.toStringAsFixed(0)}',
+              gradient: kGreenGrad,
+              foreColor: kWhite,
+              onTap: _accepting == bid.id ? () {} : () => _accept(bid),
             ),
           ),
         ],
